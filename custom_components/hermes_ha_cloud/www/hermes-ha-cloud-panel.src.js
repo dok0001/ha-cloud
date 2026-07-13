@@ -10,7 +10,7 @@ class HermesHACloudPanel extends HTMLElement {
     this.linkDefs = [];
     this.mode = 'active';
     this.viewMode = 'constellation';
-    this.labelMode = 'smart';
+    this.labelMode = 'normal';
     this.motionMode = 'calm';
     this.selectedNode = null;
     this.hoveredNode = null;
@@ -45,6 +45,7 @@ class HermesHACloudPanel extends HTMLElement {
     this.labelsEl = this.shadowRoot.getElementById('labels');
     this.searchEl = this.shadowRoot.getElementById('search');
     this.focusListEl = this.shadowRoot.getElementById('focuslist');
+    this.focusPathsEl = this.shadowRoot.getElementById('focuspaths');
     this.problemListEl = this.shadowRoot.getElementById('problemlist');
     this.relationsEl = this.shadowRoot.getElementById('relations');
     this.labelModeEl = this.shadowRoot.getElementById('labelmodes');
@@ -186,10 +187,13 @@ class HermesHACloudPanel extends HTMLElement {
         .chip { padding: 6px 9px; border-radius: 999px; background: rgba(17, 25, 46, 0.9); border: 1px solid rgba(140,180,255,0.12); font-size: 12px; color: #dce7ff; }
         .chip.critical { border-color: rgba(255,107,107,0.4); color: #ffb0b0; }
         .chip.warning { border-color: rgba(255,179,71,0.4); color: #ffd296; }
-        .focus-grid, .list, .relations { display: grid; gap: 8px; }
+        .focus-grid, .list, .relations, .focus-paths { display: grid; gap: 8px; }
         .row, .focus-row, .relation-btn { border-radius: 14px; text-align: left; display: flex; flex-direction: column; gap: 4px; }
         .row strong, .focus-row strong, .relation-btn strong { font-size: 13px; }
         .row small, .focus-row small, .relation-btn small { color: #95a8d7; }
+        .path-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 10px; border-radius: 14px; background: rgba(9, 14, 28, 0.72); border: 1px solid rgba(140, 180, 255, 0.12); }
+        .path-node { border: 1px solid rgba(140, 180, 255, 0.16); background: rgba(14, 21, 42, 0.84); color: #eef4ff; padding: 7px 10px; border-radius: 999px; cursor: pointer; font: inherit; }
+        .path-arrow { color: #7eaefb; font-size: 12px; }
         .microcopy { color: #96a8d7; font-size: 12px; line-height: 1.45; margin-top: 8px; }
         .empty { color: #90a5d6; font-size: 13px; }
         @media (max-width: 1320px) {
@@ -256,6 +260,11 @@ class HermesHACloudPanel extends HTMLElement {
             <h3>Focus lane</h3>
             <div class="microcopy">Viktigaste synliga noderna just nu. Problem och unavailable får extra vikt.</div>
             <div class="focus-grid" id="focuslist"></div>
+          </div>
+          <div class="card">
+            <h3>Fokusvägar</h3>
+            <div class="microcopy">Klickbara kedjor mellan rum, enhet, entitet och automation/scen för vald nod.</div>
+            <div class="focus-paths" id="focuspaths"></div>
           </div>
           <div class="card">
             <h3>Problem-enheter</h3>
@@ -390,6 +399,7 @@ class HermesHACloudPanel extends HTMLElement {
     const groups = [];
     const allItems = this.getAllCollections().flatMap(([, items]) => items);
     const timelineOrder = new Map(allItems.map((item, idx) => [item.id, idx]));
+    const areaAnchors = new Map();
 
     const pack = (items, layer) => {
       const cluster = this.layerConfigs[layer];
@@ -407,7 +417,7 @@ class HermesHACloudPanel extends HTMLElement {
         const tIndex = timelineOrder.get(item.id) ?? idx;
         const lineX = -180 + (tIndex / Math.max(allItems.length - 1, 1)) * 360;
         const timelinePosition = new THREE.Vector3(lineX, cluster.band + jitter(s * 0.9, 7), Math.sin((tIndex + 1) * 0.7) * 34 + jitter(s * 0.5, 7));
-        groups.push({
+        const node = {
           ...item,
           layer,
           type: layer,
@@ -420,11 +430,45 @@ class HermesHACloudPanel extends HTMLElement {
           size: cluster.baseSize + (item.importance || 0.4) * (layer === 'problem' ? 4.6 : 3.6),
           alpha: item.severity === 'critical' ? 0.94 : 0.42 + (item.importance || 0.4) * 0.45,
           searchable: `${item.title || ''} ${item.text || ''} ${item.group || ''} ${item.category || ''} ${item.meta || ''}`.toLowerCase(),
-        });
+        };
+        groups.push(node);
+        if (layer === 'area' && item.area_id) {
+          areaAnchors.set(item.area_id, { basePosition: basePosition.clone(), timelinePosition: timelinePosition.clone() });
+        }
       });
     };
 
-    this.getAllCollections().forEach(([layer, items]) => pack(items, layer));
+    pack(this.data?.addons || [], 'addon');
+    pack(this.data?.integrations || [], 'integration');
+    pack(this.data?.areas || [], 'area');
+    pack(this.data?.devices || [], 'device');
+    pack(this.data?.entities || [], 'entity');
+    pack(this.data?.automations || [], 'automation');
+    pack(this.data?.scenes || [], 'scene');
+    pack(this.data?.persons || [], 'person');
+    pack(this.data?.problem_devices || [], 'problem');
+
+    groups.forEach((node, idx) => {
+      const anchor = node.area_id ? areaAnchors.get(node.area_id) : null;
+      if (!anchor) return;
+      const s = idx + 1;
+      const orbit = new THREE.Vector3(jitter(s * 0.71, 18), jitter(s * 0.43, 10), jitter(s * 0.97, 16));
+      if (node.layer === 'device') {
+        node.basePosition = anchor.basePosition.clone().add(orbit.clone().multiplyScalar(0.85));
+        node.timelinePosition = anchor.timelinePosition.clone().add(new THREE.Vector3(16, 10, 0));
+      } else if (node.layer === 'entity') {
+        node.basePosition = anchor.basePosition.clone().add(orbit.clone().multiplyScalar(1.15)).add(new THREE.Vector3(0, -28, 0));
+        node.timelinePosition = anchor.timelinePosition.clone().add(new THREE.Vector3(34, 22, 0));
+      } else if (node.layer === 'automation' || node.layer === 'scene') {
+        node.basePosition = anchor.basePosition.clone().add(orbit.clone().multiplyScalar(0.75)).add(new THREE.Vector3(-18, -42, 20));
+      } else if (node.layer === 'person') {
+        node.basePosition = anchor.basePosition.clone().add(orbit.clone().multiplyScalar(0.55)).add(new THREE.Vector3(0, 30, 16));
+      } else if (node.layer === 'problem') {
+        node.basePosition = anchor.basePosition.clone().add(new THREE.Vector3(42, -12, 42)).add(orbit.clone().multiplyScalar(0.35));
+      }
+      node.position = node.basePosition.clone();
+    });
+
     this.nodes = groups;
     this.linkDefs = this.data.links || [];
   }
@@ -565,7 +609,7 @@ class HermesHACloudPanel extends HTMLElement {
       });
     };
     build(this.viewModeEl, this.viewMode, [['constellation', 'Constellation'], ['timeline', 'Timeline']], (value) => { this.viewMode = value; this.drawMiniMap(); });
-    build(this.labelModeEl, this.labelMode, [['smart', 'Labels smart'], ['all', 'Labels all'], ['off', 'Labels off']], (value) => { this.labelMode = value; this.updateControlPills(); this.updateFocusLane(); });
+    build(this.labelModeEl, this.labelMode, [['minimal', 'Minimal labels'], ['normal', 'Normal'], ['detailed', 'Detailed']], (value) => { this.labelMode = value; this.updateControlPills(); this.updateFocusLane(); });
     build(this.motionModeEl, this.motionMode, [['calm', 'Motion calm'], ['live', 'Motion live'], ['still', 'Motion still']], (value) => { this.motionMode = value; this.autoDrift = value === 'live' ? 0.0001 : value === 'still' ? 0 : 0.00004; this.updateControlPills(); });
   }
 
@@ -648,6 +692,82 @@ class HermesHACloudPanel extends HTMLElement {
     return [...seen.values()].sort((a, b) => ((b.severity === 'critical') - (a.severity === 'critical')) || ((b.importance || 0) - (a.importance || 0))).slice(0, 16);
   }
 
+  getNodeById(id) {
+    return this.nodeMap.get(id)?.userData?.node || null;
+  }
+
+  buildHierarchyPaths(node) {
+    if (!node?.id) return [];
+    const paths = [];
+    const areaNode = node.area_id ? this.getNodeById(`area-${node.area_id}`) : null;
+    const deviceNode = node.device_id ? this.getNodeById(`device-${node.device_id}`) : (node.layer === 'device' ? node : null);
+    const entityNode = node.entity_id ? this.getNodeById(`entity-${node.entity_id}`) || this.getNodeById(`automation-${node.entity_id}`) || this.getNodeById(`scene-${node.entity_id}`) || this.getNodeById(`person-${node.entity_id}`) : (node.layer === 'entity' ? node : null);
+
+    if (node.layer === 'area') {
+      const devices = this.getRelatedNodes(node).filter((x) => x.layer === 'device').slice(0, 3);
+      devices.forEach((dev) => {
+        const entity = this.getRelatedNodes(dev).find((x) => x.layer === 'entity');
+        const action = entity ? this.getRelatedNodes(entity).find((x) => x.layer === 'automation' || x.layer === 'scene') : null;
+        paths.push([node, dev, entity, action].filter(Boolean));
+      });
+    } else if (node.layer === 'device') {
+      const entity = this.getRelatedNodes(node).find((x) => x.layer === 'entity');
+      const action = entity ? this.getRelatedNodes(entity).find((x) => x.layer === 'automation' || x.layer === 'scene') : null;
+      paths.push([areaNode, node, entity, action].filter(Boolean));
+    } else if (node.layer === 'entity') {
+      const action = this.getRelatedNodes(node).find((x) => x.layer === 'automation' || x.layer === 'scene');
+      paths.push([areaNode, deviceNode, node, action].filter(Boolean));
+    } else if (node.layer === 'automation' || node.layer === 'scene') {
+      const entity = this.getRelatedNodes(node).find((x) => x.layer === 'entity');
+      const dev = entity?.device_id ? this.getNodeById(`device-${entity.device_id}`) : null;
+      const area = entity?.area_id ? this.getNodeById(`area-${entity.area_id}`) : null;
+      paths.push([area, dev, entity, node].filter(Boolean));
+    } else if (node.layer === 'problem') {
+      const dev = deviceNode || this.getNodeById(`device-${node.device_id}`);
+      const entity = this.getRelatedNodes(node).find((x) => x.layer === 'entity');
+      paths.push([areaNode, dev, entity, node].filter(Boolean));
+    } else {
+      paths.push([areaNode, deviceNode, entityNode, node].filter(Boolean));
+    }
+
+    const dedup = new Set();
+    return paths.filter((path) => path.length >= 2).filter((path) => {
+      const key = path.map((x) => x.id).join('>');
+      if (dedup.has(key)) return false;
+      dedup.add(key);
+      return true;
+    }).slice(0, 4);
+  }
+
+  updateFocusPaths() {
+    if (!this.focusPathsEl) return;
+    const item = this.selectedNode || this.hoveredNode;
+    const paths = this.buildHierarchyPaths(item);
+    this.focusPathsEl.innerHTML = '';
+    if (!paths.length) {
+      this.focusPathsEl.innerHTML = '<div class="empty">Ingen fokusväg tillgänglig för vald nod ännu.</div>';
+      return;
+    }
+    paths.forEach((path) => {
+      const row = document.createElement('div');
+      row.className = 'path-row';
+      path.forEach((node, idx) => {
+        const button = document.createElement('button');
+        button.className = 'path-node';
+        button.textContent = node.title;
+        button.addEventListener('click', () => this.selectNodeById(node.id));
+        row.appendChild(button);
+        if (idx < path.length - 1) {
+          const arrow = document.createElement('span');
+          arrow.className = 'path-arrow';
+          arrow.textContent = '→';
+          row.appendChild(arrow);
+        }
+      });
+      this.focusPathsEl.appendChild(row);
+    });
+  }
+
   updateProblemList() {
     if (!this.problemListEl) return;
     const problems = this.data?.problem_devices || [];
@@ -685,6 +805,7 @@ class HermesHACloudPanel extends HTMLElement {
       button.addEventListener('click', () => this.selectNodeById(item.id));
       this.focusListEl.appendChild(button);
     });
+    this.updateFocusPaths();
   }
 
   updateStats() {
@@ -731,6 +852,7 @@ class HermesHACloudPanel extends HTMLElement {
       button.addEventListener('click', () => this.selectNodeById(rel.id));
       this.relationsEl.appendChild(button);
     });
+    this.updateFocusPaths();
   }
 
   updateLabelAnchors() {
@@ -739,10 +861,10 @@ class HermesHACloudPanel extends HTMLElement {
     const chosenIds = new Set();
     if (this.labelMode !== 'off') {
       [this.selectedNode, this.hoveredNode].forEach((node) => node?.id && chosenIds.add(node.id));
-      const max = this.labelMode === 'all' ? 18 : 8;
+      const max = this.labelMode === 'detailed' ? 18 : this.labelMode === 'normal' ? 10 : 5;
       preferred.forEach((node) => {
         if (chosenIds.size >= max) return;
-        if (this.labelMode === 'all' || node.severity === 'critical' || (node.importance || 0) >= 0.82 || this.matchesSearch(node)) chosenIds.add(node.id);
+        if (this.labelMode === 'detailed' || node.severity === 'critical' || (node.importance || 0) >= (this.labelMode === 'minimal' ? 0.9 : 0.82) || this.matchesSearch(node)) chosenIds.add(node.id);
       });
     }
     const occupied = [];
@@ -753,23 +875,23 @@ class HermesHACloudPanel extends HTMLElement {
       const inFront = screen.z > -1 && screen.z < 1;
       const inBounds = screen.x > -1.12 && screen.x < 1.12 && screen.y > -1.12 && screen.y < 1.12;
       if (!inFront || !inBounds) { el.style.opacity = '0'; el.classList.remove('active'); return; }
- const x = (screen.x * 0.5 + 0.5) * this.width;
- const y = (-screen.y * 0.5 + 0.5) * this.height - Math.max(26, mesh.scale.x * 2.6);
- const width = this.selectedNode?.id === id || this.hoveredNode?.id === id ? 210 : 170;
- const height = 44;
- const rect = { left: x - width / 2, right: x + width / 2, top: y - height / 2, bottom: y + height / 2 };
- const overlaps = occupied.some((box) => !(rect.right < box.left || rect.left > box.right || rect.bottom < box.top || rect.top > box.bottom));
- if (overlaps && this.selectedNode?.id !== id && this.hoveredNode?.id !== id) {
-   el.style.opacity = '0';
-   el.classList.remove('active');
-   return;
- }
- occupied.push(rect);
- el.style.left = `${x}px`; el.style.top = `${y}px`;
- el.style.opacity = String(this.selectedNode?.id === id || this.hoveredNode?.id === id ? 1 : 0.86);
- if (this.selectedNode?.id === id || this.hoveredNode?.id === id) el.classList.add('active'); else el.classList.remove('active');
- });
- }
+      const x = (screen.x * 0.5 + 0.5) * this.width;
+      const y = (-screen.y * 0.5 + 0.5) * this.height - Math.max(26, mesh.scale.x * 2.6);
+      const width = this.selectedNode?.id === id || this.hoveredNode?.id === id ? 210 : this.labelMode === 'detailed' ? 180 : this.labelMode === 'normal' ? 156 : 136;
+      const height = 44;
+      const rect = { left: x - width / 2, right: x + width / 2, top: y - height / 2, bottom: y + height / 2 };
+      const overlaps = occupied.some((box) => !(rect.right < box.left || rect.left > box.right || rect.bottom < box.top || rect.top > box.bottom));
+      if (overlaps && this.selectedNode?.id !== id && this.hoveredNode?.id !== id) {
+        el.style.opacity = '0';
+        el.classList.remove('active');
+        return;
+      }
+      occupied.push(rect);
+      el.style.left = `${x}px`; el.style.top = `${y}px`;
+      el.style.opacity = String(this.selectedNode?.id === id || this.hoveredNode?.id === id ? 1 : 0.86);
+      if (this.selectedNode?.id === id || this.hoveredNode?.id === id) el.classList.add('active'); else el.classList.remove('active');
+    });
+  }
 
   drawMiniMap() {
     if (!this.miniMapCtx || !this.miniMapEl) return;
