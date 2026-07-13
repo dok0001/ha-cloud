@@ -1,0 +1,7 @@
+DOMAIN = "hermes_ha_cloud"
+PANEL_TITLE = "Hermes HA Cloud"
+PANEL_ICON = "mdi:home-analytics"
+PANEL_URL_PATH = "hermes-ha-cloud"
+WEBCOMPONENT_NAME = "hermes-ha-cloud-panel"
+STATIC_URL = "/hermes_ha_cloud_static"
+API_URL = "/api/hermes_ha_cloud/data"

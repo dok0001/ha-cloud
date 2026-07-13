@@ -1,0 +1,15 @@
+{
+  "title": "Hermes HA Cloud",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add Hermes HA Cloud",
+        "description": "Adds the Home Assistant cloud-style panel.",
+        "data": {}
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Only one Hermes HA Cloud instance is allowed."
+    }
+  }
+}
