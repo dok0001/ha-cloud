@@ -8,7 +8,7 @@ class HermesHACloudPanel extends HTMLElement {
     this.data = null;
     this.nodes = [];
     this.linkDefs = [];
-    this.mode = 'all';
+    this.mode = 'active';
     this.viewMode = 'constellation';
     this.labelMode = 'smart';
     this.motionMode = 'calm';
@@ -80,15 +80,15 @@ class HermesHACloudPanel extends HTMLElement {
 
   createLayerConfigs() {
     return {
-      addon: { label: 'Add-ons', color: 0x6dd9ff, css: '#6dd9ff', center: new THREE.Vector3(-138, 34, 34), spread: new THREE.Vector3(42, 24, 30), baseSize: 2.7, band: -92 },
-      integration: { label: 'Integrationer', color: 0xffb86d, css: '#ffb86d', center: new THREE.Vector3(-44, 12, 10), spread: new THREE.Vector3(58, 26, 38), baseSize: 3.1, band: -56 },
-      area: { label: 'Areas / rum', color: 0x4bc0ff, css: '#4bc0ff', center: new THREE.Vector3(54, 46, 28), spread: new THREE.Vector3(56, 28, 40), baseSize: 3.4, band: -24 },
-      device: { label: 'Enheter', color: 0xae8cff, css: '#ae8cff', center: new THREE.Vector3(114, 14, -2), spread: new THREE.Vector3(66, 40, 52), baseSize: 3.2, band: 8 },
-      entity: { label: 'Entiteter', color: 0x79f0ae, css: '#79f0ae', center: new THREE.Vector3(0, -24, -94), spread: new THREE.Vector3(100, 36, 44), baseSize: 2.35, band: 36 },
-      automation: { label: 'Automationer', color: 0xffe36c, css: '#ffe36c', center: new THREE.Vector3(-116, -52, -18), spread: new THREE.Vector3(46, 22, 36), baseSize: 2.9, band: 68 },
-      scene: { label: 'Scener', color: 0xff9ecf, css: '#ff9ecf', center: new THREE.Vector3(-18, -70, 36), spread: new THREE.Vector3(38, 20, 32), baseSize: 2.9, band: 98 },
-      person: { label: 'Personer', color: 0xc0f7ff, css: '#c0f7ff', center: new THREE.Vector3(76, -64, 48), spread: new THREE.Vector3(26, 18, 20), baseSize: 3.4, band: 126 },
-      problem: { label: 'Problem-enheter', color: 0xff6b6b, css: '#ff6b6b', center: new THREE.Vector3(152, -28, 86), spread: new THREE.Vector3(32, 18, 20), baseSize: 4.3, band: 154 },
+      addon: { label: 'Add-ons', color: 0x6dd9ff, css: '#6dd9ff', center: new THREE.Vector3(-178, 54, 42), spread: new THREE.Vector3(34, 18, 24), baseSize: 2.55, band: -112 },
+      integration: { label: 'Integrationer', color: 0xffb86d, css: '#ffb86d', center: new THREE.Vector3(-82, 22, 14), spread: new THREE.Vector3(44, 22, 28), baseSize: 2.95, band: -78 },
+      area: { label: 'Areas / rum', color: 0x4bc0ff, css: '#4bc0ff', center: new THREE.Vector3(18, 60, 34), spread: new THREE.Vector3(42, 22, 28), baseSize: 3.15, band: -42 },
+      device: { label: 'Enheter', color: 0xae8cff, css: '#ae8cff', center: new THREE.Vector3(128, 30, -6), spread: new THREE.Vector3(54, 32, 36), baseSize: 3.0, band: -2 },
+      entity: { label: 'Entiteter', color: 0x79f0ae, css: '#79f0ae', center: new THREE.Vector3(0, -20, -126), spread: new THREE.Vector3(82, 26, 28), baseSize: 2.05, band: 38 },
+      automation: { label: 'Automationer', color: 0xffe36c, css: '#ffe36c', center: new THREE.Vector3(-136, -54, -12), spread: new THREE.Vector3(34, 18, 24), baseSize: 2.7, band: 76 },
+      scene: { label: 'Scener', color: 0xff9ecf, css: '#ff9ecf', center: new THREE.Vector3(-22, -82, 44), spread: new THREE.Vector3(28, 16, 22), baseSize: 2.7, band: 108 },
+      person: { label: 'Personer', color: 0xc0f7ff, css: '#c0f7ff', center: new THREE.Vector3(90, -78, 56), spread: new THREE.Vector3(20, 14, 16), baseSize: 3.1, band: 138 },
+      problem: { label: 'Problem-enheter', color: 0xff6b6b, css: '#ff6b6b', center: new THREE.Vector3(188, -8, 102), spread: new THREE.Vector3(20, 12, 14), baseSize: 4.1, band: 168 },
     };
   }
 
@@ -215,7 +215,7 @@ class HermesHACloudPanel extends HTMLElement {
             <div class="headline">
               <div class="eyebrow">Home Assistant / topology observatory</div>
               <h1>Hermes HA Cloud</h1>
-              <div class="sub">HA-specifik molnkarta med separata lager för add-ons, integrationer, areas, enheter, entiteter, automationer, scener, personer och problem-enheter. Kopplingar visas explicit mellan relaterade objekt och unavailable lyfts fram som larmkluster.</div>
+              <div class="sub">HA-specifik molnkarta där fokus ligger på aktiva och fungerande delar först. Problem, unavailable och trasiga delar finns kvar men filtreras in separat. Objekt är hårdare separerade för bättre läsbarhet och tydligare relationer.</div>
               <div class="controls">
                 <label class="search"><input id="search" type="search" placeholder="Sök rum, enheter, integrationer, automations, personer..." /></label>
                 <div class="control-group control-pills" id="viewmodes"></div>
@@ -571,7 +571,7 @@ class HermesHACloudPanel extends HTMLElement {
 
   updateFilters() {
     const modes = [
-      ['all', 'Alla'], ['problem', 'Problem'], ['unavailable', 'Unavailable'], ['addon', 'Add-ons'], ['integration', 'Integrationer'], ['area', 'Areas'], ['device', 'Enheter'], ['entity', 'Entiteter'], ['automation', 'Automationer'], ['scene', 'Scener'], ['person', 'Personer'],
+      ['active', 'Aktiva nu'], ['all', 'Alla'], ['problem', 'Problem'], ['unavailable', 'Unavailable'], ['addon', 'Add-ons'], ['integration', 'Integrationer'], ['area', 'Areas'], ['device', 'Enheter'], ['entity', 'Entiteter'], ['automation', 'Automationer'], ['scene', 'Scener'], ['person', 'Personer'],
     ];
     this.filterEl.innerHTML = '';
     modes.forEach(([value, label]) => {
@@ -591,6 +591,14 @@ class HermesHACloudPanel extends HTMLElement {
 
   matchesSearch(node) { return !this.searchQuery || node.searchable.includes(this.searchQuery); }
   modeMatches(node) {
+    if (this.mode === 'active') {
+      if (node.layer === 'problem') return false;
+      if (node.severity === 'critical' || node.state === 'unavailable' || node.state === 'unknown') return false;
+      if (node.layer === 'entity') return ['on', 'home', 'playing', 'open', 'armed_home', 'armed_away', 'triggered'].includes(node.state);
+      if (node.layer === 'person') return node.state === 'home';
+      if (node.layer === 'device' || node.layer === 'integration' || node.layer === 'area') return (node.view_count || 0) === 0;
+      return true;
+    }
     if (this.mode === 'all') return true;
     if (this.mode === 'unavailable') return node.severity === 'critical' || node.state === 'unavailable';
     return node.layer === this.mode;
@@ -731,12 +739,13 @@ class HermesHACloudPanel extends HTMLElement {
     const chosenIds = new Set();
     if (this.labelMode !== 'off') {
       [this.selectedNode, this.hoveredNode].forEach((node) => node?.id && chosenIds.add(node.id));
-      const max = this.labelMode === 'all' ? 28 : 14;
+      const max = this.labelMode === 'all' ? 18 : 8;
       preferred.forEach((node) => {
         if (chosenIds.size >= max) return;
-        if (this.labelMode === 'all' || node.severity === 'critical' || (node.importance || 0) >= 0.74 || this.matchesSearch(node)) chosenIds.add(node.id);
+        if (this.labelMode === 'all' || node.severity === 'critical' || (node.importance || 0) >= 0.82 || this.matchesSearch(node)) chosenIds.add(node.id);
       });
     }
+    const occupied = [];
     this.labelEls.forEach((el, id) => {
       const mesh = this.nodeMap.get(id);
       if (!mesh?.visible || !chosenIds.has(id) || this.labelMode === 'off') { el.style.opacity = '0'; el.classList.remove('active'); return; }
@@ -744,13 +753,23 @@ class HermesHACloudPanel extends HTMLElement {
       const inFront = screen.z > -1 && screen.z < 1;
       const inBounds = screen.x > -1.12 && screen.x < 1.12 && screen.y > -1.12 && screen.y < 1.12;
       if (!inFront || !inBounds) { el.style.opacity = '0'; el.classList.remove('active'); return; }
-      const x = (screen.x * 0.5 + 0.5) * this.width;
-      const y = (-screen.y * 0.5 + 0.5) * this.height - Math.max(26, mesh.scale.x * 2.6);
-      el.style.left = `${x}px`; el.style.top = `${y}px`;
-      el.style.opacity = String(this.selectedNode?.id === id || this.hoveredNode?.id === id ? 1 : 0.86);
-      if (this.selectedNode?.id === id || this.hoveredNode?.id === id) el.classList.add('active'); else el.classList.remove('active');
-    });
-  }
+ const x = (screen.x * 0.5 + 0.5) * this.width;
+ const y = (-screen.y * 0.5 + 0.5) * this.height - Math.max(26, mesh.scale.x * 2.6);
+ const width = this.selectedNode?.id === id || this.hoveredNode?.id === id ? 210 : 170;
+ const height = 44;
+ const rect = { left: x - width / 2, right: x + width / 2, top: y - height / 2, bottom: y + height / 2 };
+ const overlaps = occupied.some((box) => !(rect.right < box.left || rect.left > box.right || rect.bottom < box.top || rect.top > box.bottom));
+ if (overlaps && this.selectedNode?.id !== id && this.hoveredNode?.id !== id) {
+   el.style.opacity = '0';
+   el.classList.remove('active');
+   return;
+ }
+ occupied.push(rect);
+ el.style.left = `${x}px`; el.style.top = `${y}px`;
+ el.style.opacity = String(this.selectedNode?.id === id || this.hoveredNode?.id === id ? 1 : 0.86);
+ if (this.selectedNode?.id === id || this.hoveredNode?.id === id) el.classList.add('active'); else el.classList.remove('active');
+ });
+ }
 
   drawMiniMap() {
     if (!this.miniMapCtx || !this.miniMapEl) return;
