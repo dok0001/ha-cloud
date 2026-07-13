@@ -7,6 +7,7 @@ class HermesHACloudPanel extends HTMLElement {
     this.attachShadow({ mode: 'open' });
     this.data = null;
     this.nodes = [];
+    this.linkDefs = [];
     this.mode = 'all';
     this.viewMode = 'constellation';
     this.labelMode = 'smart';
@@ -19,10 +20,9 @@ class HermesHACloudPanel extends HTMLElement {
     this.nodeObjects = [];
     this.nodeMap = new Map();
     this.labelEls = new Map();
-    this.clusterZones = [];
-    this.clusterConfigs = this.createClusterConfigs();
     this.lastTime = performance.now();
     this.autoDrift = 0.00004;
+    this.layerConfigs = this.createLayerConfigs();
     this.render();
   }
 
@@ -45,16 +45,18 @@ class HermesHACloudPanel extends HTMLElement {
     this.labelsEl = this.shadowRoot.getElementById('labels');
     this.searchEl = this.shadowRoot.getElementById('search');
     this.focusListEl = this.shadowRoot.getElementById('focuslist');
+    this.problemListEl = this.shadowRoot.getElementById('problemlist');
+    this.relationsEl = this.shadowRoot.getElementById('relations');
     this.labelModeEl = this.shadowRoot.getElementById('labelmodes');
     this.motionModeEl = this.shadowRoot.getElementById('motionmodes');
     this.viewModeEl = this.shadowRoot.getElementById('viewmodes');
     this.miniMapEl = this.shadowRoot.getElementById('minimap');
     this.miniMapCtx = this.miniMapEl?.getContext('2d');
     this.initThree();
+    this.installEvents();
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(this.sceneHost);
     this.resize();
-    this.installEvents();
     this.raf = requestAnimationFrame((t) => this.animate(t));
   }
 
@@ -76,36 +78,17 @@ class HermesHACloudPanel extends HTMLElement {
       .replaceAll("'", '&#39;');
   }
 
-  createClusterConfigs() {
+  createLayerConfigs() {
     return {
-      memory: {
-        center: new THREE.Vector3(-78, -6, 14),
-        spread: new THREE.Vector3(88, 54, 76),
-        baseSize: 2.9,
-        color: 0x7ee7ff,
-        label: 'Addon nebula',
-      },
-      profile: {
-        center: new THREE.Vector3(96, -34, -12),
-        spread: new THREE.Vector3(88, 46, 62),
-        baseSize: 2.8,
-        color: 0xffb86d,
-        label: 'Integration orbit',
-      },
-      skill: {
-        center: new THREE.Vector3(16, 68, 24),
-        spread: new THREE.Vector3(126, 72, 118),
-        baseSize: 3.0,
-        color: 0xae8cff,
-        label: 'Device halo',
-      },
-      tool: {
-        center: new THREE.Vector3(0, 2, -94),
-        spread: new THREE.Vector3(76, 42, 56),
-        baseSize: 2.55,
-        color: 0x79f0ae,
-        label: 'Entity lattice',
-      },
+      addon: { label: 'Add-ons', color: 0x6dd9ff, css: '#6dd9ff', center: new THREE.Vector3(-138, 34, 34), spread: new THREE.Vector3(42, 24, 30), baseSize: 2.7, band: -92 },
+      integration: { label: 'Integrationer', color: 0xffb86d, css: '#ffb86d', center: new THREE.Vector3(-44, 12, 10), spread: new THREE.Vector3(58, 26, 38), baseSize: 3.1, band: -56 },
+      area: { label: 'Areas / rum', color: 0x4bc0ff, css: '#4bc0ff', center: new THREE.Vector3(54, 46, 28), spread: new THREE.Vector3(56, 28, 40), baseSize: 3.4, band: -24 },
+      device: { label: 'Enheter', color: 0xae8cff, css: '#ae8cff', center: new THREE.Vector3(114, 14, -2), spread: new THREE.Vector3(66, 40, 52), baseSize: 3.2, band: 8 },
+      entity: { label: 'Entiteter', color: 0x79f0ae, css: '#79f0ae', center: new THREE.Vector3(0, -24, -94), spread: new THREE.Vector3(100, 36, 44), baseSize: 2.35, band: 36 },
+      automation: { label: 'Automationer', color: 0xffe36c, css: '#ffe36c', center: new THREE.Vector3(-116, -52, -18), spread: new THREE.Vector3(46, 22, 36), baseSize: 2.9, band: 68 },
+      scene: { label: 'Scener', color: 0xff9ecf, css: '#ff9ecf', center: new THREE.Vector3(-18, -70, 36), spread: new THREE.Vector3(38, 20, 32), baseSize: 2.9, band: 98 },
+      person: { label: 'Personer', color: 0xc0f7ff, css: '#c0f7ff', center: new THREE.Vector3(76, -64, 48), spread: new THREE.Vector3(26, 18, 20), baseSize: 3.4, band: 126 },
+      problem: { label: 'Problem-enheter', color: 0xff6b6b, css: '#ff6b6b', center: new THREE.Vector3(152, -28, 86), spread: new THREE.Vector3(32, 18, 20), baseSize: 4.3, band: 154 },
     };
   }
 
@@ -121,13 +104,17 @@ class HermesHACloudPanel extends HTMLElement {
           --bg2: #101b37;
           --line: rgba(126, 180, 255, 0.16);
           --panel: rgba(10, 15, 31, 0.76);
+          --panel-strong: rgba(8, 13, 26, 0.92);
           --border: rgba(130, 175, 255, 0.12);
+          --critical: #ff6b6b;
+          --warning: #ffb347;
+          --ok: #8bd3ff;
           font-family: Inter, system-ui, sans-serif;
         }
         * { box-sizing: border-box; }
         .layout {
           display: grid;
-          grid-template-columns: minmax(0, 1.82fr) minmax(340px, 0.9fr);
+          grid-template-columns: minmax(0, 1.78fr) minmax(360px, 0.92fr);
           height: 100vh;
           background:
             radial-gradient(circle at 18% 14%, rgba(58, 126, 255, 0.16), transparent 26%),
@@ -135,341 +122,80 @@ class HermesHACloudPanel extends HTMLElement {
             radial-gradient(circle at 54% 84%, rgba(56, 220, 187, 0.11), transparent 24%),
             linear-gradient(180deg, var(--bg1), var(--bg0));
         }
-        .scene-wrap {
-          position: relative;
-          min-height: 60vh;
-          overflow: hidden;
-          border-right: 1px solid var(--border);
-        }
-        #scene,
-        .labels,
-        .vignette,
-        .grid-glow,
-        .cinema-bar,
-        .minimap-wrap {
-          position: absolute;
-        }
-        #scene,
-        .labels,
-        .vignette,
-        .grid-glow {
-          inset: 0;
-        }
-        canvas#minimap {
-          width: 180px;
-          height: 180px;
-          display: block;
-          border-radius: 18px;
-          background: radial-gradient(circle at 50% 50%, rgba(21, 31, 58, 0.85), rgba(6, 10, 23, 0.96));
-          border: 1px solid rgba(146, 186, 255, 0.12);
-          box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
-        }
-        canvas.webgl {
-          width: 100%;
-          height: 100%;
-          display: block;
-        }
+        .scene-wrap { position: relative; overflow: hidden; border-right: 1px solid var(--border); }
+        #scene, .labels, .vignette, .grid-glow, .cinema-bar, .minimap-wrap { position: absolute; }
+        #scene, .labels, .vignette, .grid-glow { inset: 0; }
+        canvas.webgl { width: 100%; height: 100%; display: block; }
         .grid-glow {
           background:
             linear-gradient(transparent 0%, rgba(29, 71, 140, 0.09) 50%, transparent 100%),
             radial-gradient(circle at 50% 60%, rgba(111, 202, 255, 0.06), transparent 42%);
-          mix-blend-mode: screen;
-          pointer-events: none;
+          mix-blend-mode: screen; pointer-events: none;
         }
         .vignette {
-          background:
-            radial-gradient(circle at center, transparent 46%, rgba(2, 4, 11, 0.26) 72%, rgba(2, 4, 11, 0.76) 100%);
-          pointer-events: none;
-          z-index: 3;
+          background: radial-gradient(circle at center, transparent 46%, rgba(2, 4, 11, 0.26) 72%, rgba(2, 4, 11, 0.76) 100%);
+          pointer-events: none; z-index: 3;
         }
-        .cinema-bar {
-          left: 0;
-          right: 0;
-          height: 28px;
-          background: linear-gradient(180deg, rgba(0,0,0,0.72), rgba(0,0,0,0));
-          pointer-events: none;
-          z-index: 3;
-        }
-        .cinema-bar.bottom {
-          top: auto;
-          bottom: 0;
-          transform: rotate(180deg);
-        }
-        .labels {
-          pointer-events: none;
-          z-index: 5;
-        }
+        .cinema-bar { left: 0; right: 0; height: 28px; background: linear-gradient(180deg, rgba(0,0,0,0.72), rgba(0,0,0,0)); pointer-events: none; z-index: 3; }
+        .cinema-bar.bottom { top: auto; bottom: 0; transform: rotate(180deg); }
+        .labels { pointer-events: none; z-index: 5; }
         .node-label {
-          position: absolute;
-          transform: translate(-50%, -50%);
-          padding: 8px 11px;
-          border-radius: 12px;
-          border: 1px solid rgba(160, 197, 255, 0.16);
-          background: rgba(7, 12, 26, 0.62);
-          backdrop-filter: blur(8px);
-          color: #eef4ff;
-          min-width: 96px;
-          max-width: 220px;
-          box-shadow: 0 12px 30px rgba(0, 0, 0, 0.26);
-          opacity: 0;
-          transition: opacity 140ms ease, transform 140ms ease, border-color 140ms ease, background 140ms ease;
-          pointer-events: auto;
-          cursor: pointer;
+          position: absolute; transform: translate(-50%, -50%); padding: 8px 11px; border-radius: 12px;
+          border: 1px solid rgba(160, 197, 255, 0.16); background: rgba(7, 12, 26, 0.62); backdrop-filter: blur(8px);
+          color: #eef4ff; min-width: 96px; max-width: 240px; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.26);
+          opacity: 0; transition: opacity 140ms ease, transform 140ms ease, border-color 140ms ease, background 140ms ease;
+          pointer-events: auto; cursor: pointer;
         }
-        .node-label:hover,
-        .node-label.active {
-          border-color: rgba(125, 215, 255, 0.34);
-          background: rgba(12, 19, 39, 0.84);
-          transform: translate(-50%, -50%) scale(1.04);
+        .node-label:hover, .node-label.active { border-color: rgba(125, 215, 255, 0.34); background: rgba(12, 19, 39, 0.84); transform: translate(-50%, -50%) scale(1.04); }
+        .node-label.critical { border-color: rgba(255, 107, 107, 0.65); box-shadow: 0 0 22px rgba(255, 107, 107, 0.18); }
+        .node-label.warning { border-color: rgba(255, 179, 71, 0.5); }
+        .node-label .t { display: block; font-size: 12px; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .node-label .m { display: block; margin-top: 3px; color: #9fb3dd; font-size: 10px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .hud { position: absolute; inset: 0 auto auto 0; width: min(860px, calc(100% - 28px)); margin: 16px; pointer-events: none; z-index: 4; }
+        .headline { pointer-events: auto; background: linear-gradient(180deg, rgba(9,14,31,0.84), rgba(9,14,31,0.48)); border: 1px solid var(--border); border-radius: 18px; padding: 18px 20px; box-shadow: 0 14px 42px rgba(0,0,0,0.24); }
+        .eyebrow { text-transform: uppercase; letter-spacing: 0.18em; font-size: 11px; color: #82b5ff; margin-bottom: 6px; }
+        h1 { margin: 0; font-size: 30px; line-height: 1.1; }
+        .sub { margin-top: 8px; max-width: 760px; color: #b0c0e8; font-size: 14px; line-height: 1.55; }
+        .controls { display: grid; grid-template-columns: minmax(180px, 1.3fr) repeat(3, auto); gap: 12px; margin-top: 14px; align-items: center; }
+        .search input { width: 100%; border-radius: 999px; border: 1px solid var(--border); background: rgba(5, 9, 20, 0.9); color: #eef4ff; padding: 11px 14px; outline: none; }
+        .search input::placeholder { color: #8294bf; }
+        .control-group { display: flex; gap: 8px; flex-wrap: wrap; }
+        .control-pills button, .filters button, .row, .focus-row, .relation-btn {
+          border: 1px solid rgba(140, 180, 255, 0.16); background: rgba(14, 21, 42, 0.84); color: #eef4ff;
+          padding: 9px 12px; border-radius: 999px; cursor: pointer; transition: 140ms ease; font: inherit;
         }
-        .node-label[data-type="memory"] { border-left: 3px solid #7ee7ff; }
-        .node-label[data-type="skill"] { border-left: 3px solid #ae8cff; }
-        .node-label[data-type="profile"] { border-left: 3px solid #ffb86d; }
-        .node-label[data-type="tool"] { border-left: 3px solid #79f0ae; }
-        .node-label .t {
-          display: block;
-          font-size: 12px;
-          font-weight: 700;
-          line-height: 1.2;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .node-label .m {
-          display: block;
-          margin-top: 3px;
-          color: #9fb3dd;
-          font-size: 10px;
-          line-height: 1.2;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .hud {
-          position: absolute;
-          inset: 0 auto auto 0;
-          width: min(760px, calc(100% - 28px));
-          margin: 16px;
-          pointer-events: none;
-          z-index: 4;
-        }
-        .headline {
-          pointer-events: auto;
-          background: linear-gradient(180deg, rgba(9,14,31,0.8), rgba(9,14,31,0.4));
-          border: 1px solid var(--border);
-          border-radius: 18px;
-          padding: 14px 16px;
-          backdrop-filter: blur(12px);
-          box-shadow: 0 12px 42px rgba(0, 0, 0, 0.24);
-        }
-        .eyebrow {
-          font-size: 11px;
-          letter-spacing: 0.18em;
-          text-transform: uppercase;
-          color: #90b9ff;
-          margin-bottom: 6px;
-        }
-        h1 {
-          margin: 0;
-          font-size: 28px;
-          line-height: 1.04;
-        }
-        .sub {
-          margin-top: 8px;
-          color: #b6c8ef;
-          font-size: 13px;
-          line-height: 1.45;
-          max-width: 72ch;
-        }
-        .controls {
-          display: grid;
-          grid-template-columns: minmax(0, 1.35fr) auto auto auto;
-          gap: 10px;
-          margin-top: 14px;
-          align-items: start;
-        }
-        .search {
-          display: flex;
-          align-items: center;
-          padding: 0 12px;
-          min-height: 40px;
-          border-radius: 999px;
-          background: rgba(255,255,255,0.05);
-          border: 1px solid rgba(147, 185, 255, 0.12);
-        }
-        .search input {
-          width: 100%;
-          background: transparent;
-          border: 0;
-          outline: none;
-          color: #eef3ff;
-          font: inherit;
-        }
-        .search input::placeholder { color: #8ea1d1; }
-        .control-group {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
-          justify-content: flex-end;
-        }
-        .filters,
-        .control-pills {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 10px;
-          margin-top: 14px;
-        }
-        button.pill,
-        .filters button,
-        .focus-row,
-        .row {
-          background: rgba(102, 153, 255, 0.08);
-          color: #dce7ff;
-          border: 1px solid rgba(135, 180, 255, 0.15);
-          border-radius: 999px;
-          padding: 7px 11px;
-          cursor: pointer;
-          font-weight: 600;
-        }
-        button.pill.active,
-        .filters button.active {
-          background: linear-gradient(180deg, rgba(63, 179, 255, 0.24), rgba(76, 97, 255, 0.16));
-          box-shadow: 0 0 20px rgba(61,184,255,0.12);
-        }
-        .legend {
-          margin-top: 12px;
-          display: flex;
-          flex-wrap: wrap;
-          gap: 12px;
-          color: #97a8d9;
-          font-size: 12px;
-        }
-        .legend span::before {
-          content: '';
-          display: inline-block;
-          width: 10px;
-          height: 10px;
-          border-radius: 50%;
-          margin-right: 8px;
-          vertical-align: middle;
-        }
-        .memory::before { background: #7ee7ff; }
-        .skill::before { background: #ae8cff; }
-        .profile::before { background: #ffb86d; }
-        .tool::before { background: #79f0ae; }
-        .tooltip {
-          position: absolute;
-          transform: translate(-50%, calc(-100% - 14px));
-          pointer-events: none;
-          background: rgba(7, 12, 26, 0.88);
-          border: 1px solid rgba(135, 180, 255, 0.18);
-          border-radius: 12px;
-          padding: 8px 10px;
-          font-size: 12px;
-          color: #ebf2ff;
-          min-width: 120px;
-          max-width: 280px;
-          opacity: 0;
-          transition: opacity 140ms ease;
-          backdrop-filter: blur(8px);
-          z-index: 6;
-          box-shadow: 0 14px 30px rgba(0,0,0,0.26);
-        }
-        .tooltip.visible { opacity: 1; }
-        .minimap-wrap {
-          right: 20px;
-          bottom: 22px;
-          z-index: 5;
-          pointer-events: none;
-        }
-        .minimap-copy {
-          margin-top: 8px;
-          color: #9ab1de;
-          font-size: 11px;
-          text-align: center;
-          text-shadow: 0 1px 0 rgba(0,0,0,0.3);
-        }
-        aside {
-          padding: 18px;
-          overflow: auto;
-          background: linear-gradient(180deg, rgba(6,10,24,0.97), rgba(10,14,31,0.94));
-        }
-        .card {
-          background: var(--panel);
-          border: 1px solid var(--border);
-          border-radius: 18px;
-          padding: 16px;
-          margin-bottom: 14px;
-          box-shadow: 0 12px 28px rgba(0,0,0,0.22);
-          backdrop-filter: blur(10px);
-        }
-        .card h2, .card h3 { margin: 0 0 10px 0; }
-        .stats {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 10px;
-        }
-        .stat {
-          padding: 12px;
-          border-radius: 14px;
-          background: rgba(255,255,255,0.03);
-          border: 1px solid rgba(255,255,255,0.06);
-        }
-        .stat .v { font-size: 24px; font-weight: 800; }
-        .stat .k { font-size: 12px; color: #93a4d6; text-transform: uppercase; letter-spacing: 0.08em; }
-        .detail-type {
-          display: inline-block;
-          font-size: 12px;
-          color: #8ab7ff;
-          text-transform: uppercase;
-          letter-spacing: 0.14em;
-          margin-bottom: 10px;
-        }
-        .detail-body {
-          color: #d9e3ff;
-          line-height: 1.55;
-          font-size: 14px;
-          white-space: pre-wrap;
-        }
+        .control-pills button.active, .filters button.active { background: rgba(36, 75, 164, 0.95); border-color: rgba(125, 215, 255, 0.34); }
+        .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+        .legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+        .legend span { border-radius: 999px; padding: 5px 10px; font-size: 12px; border: 1px solid rgba(140,180,255,0.14); background: rgba(10, 16, 30, 0.68); }
+        .legend .critical { border-color: rgba(255,107,107,0.36); color: #ffaeae; }
+        .minimap-wrap { right: 18px; bottom: 18px; z-index: 4; }
+        canvas#minimap { width: 180px; height: 180px; display: block; border-radius: 18px; background: radial-gradient(circle at 50% 50%, rgba(21, 31, 58, 0.85), rgba(6, 10, 23, 0.96)); border: 1px solid rgba(146, 186, 255, 0.12); box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28); }
+        .minimap-copy { margin-top: 8px; text-align: center; font-size: 11px; color: #90a5d6; }
+        aside { overflow: auto; padding: 14px; display: grid; gap: 12px; background: linear-gradient(180deg, rgba(5,9,20,0.9), rgba(4,7,16,0.96)); }
+        .card { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.18); }
+        .card h2, .card h3 { margin: 0 0 8px 0; }
+        .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+        .stat { background: rgba(9, 14, 28, 0.86); border: 1px solid rgba(140, 180, 255, 0.12); border-radius: 14px; padding: 10px 12px; }
+        .stat .v { font-size: 22px; font-weight: 800; }
+        .stat .k { color: #9fb3dd; font-size: 12px; }
+        .stat.critical { border-color: rgba(255,107,107,0.38); background: rgba(41, 12, 18, 0.75); }
+        .detail-type { color: #8db7ff; text-transform: uppercase; font-size: 11px; letter-spacing: 0.18em; }
+        .detail-body { margin-top: 10px; color: #d6e2ff; line-height: 1.55; white-space: pre-wrap; }
         .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-        .chip {
-          padding: 6px 10px;
-          border-radius: 999px;
-          background: rgba(126, 180, 255, 0.10);
-          border: 1px solid rgba(126, 180, 255, 0.12);
-          color: #d9e3ff;
-          font-size: 12px;
-        }
-        .list,
-        .focus-grid { display: grid; gap: 8px; }
-        .row,
-        .focus-row {
-          width: 100%;
-          text-align: left;
-          border-radius: 12px;
-          padding: 10px 12px;
-        }
-        .row:hover,
-        .focus-row:hover {
-          border-color: rgba(126, 180, 255, 0.24);
-          background: rgba(126, 180, 255, 0.08);
-        }
-        .row strong,
-        .focus-row strong { display: block; }
-        .row small,
-        .focus-row small { color: #95a8d7; }
-        .microcopy {
-          color: #96a8d7;
-          font-size: 12px;
-          line-height: 1.45;
-          margin-top: 8px;
-        }
+        .chip { padding: 6px 9px; border-radius: 999px; background: rgba(17, 25, 46, 0.9); border: 1px solid rgba(140,180,255,0.12); font-size: 12px; color: #dce7ff; }
+        .chip.critical { border-color: rgba(255,107,107,0.4); color: #ffb0b0; }
+        .chip.warning { border-color: rgba(255,179,71,0.4); color: #ffd296; }
+        .focus-grid, .list, .relations { display: grid; gap: 8px; }
+        .row, .focus-row, .relation-btn { border-radius: 14px; text-align: left; display: flex; flex-direction: column; gap: 4px; }
+        .row strong, .focus-row strong, .relation-btn strong { font-size: 13px; }
+        .row small, .focus-row small, .relation-btn small { color: #95a8d7; }
+        .microcopy { color: #96a8d7; font-size: 12px; line-height: 1.45; margin-top: 8px; }
+        .empty { color: #90a5d6; font-size: 13px; }
         @media (max-width: 1320px) {
-          .controls {
-            grid-template-columns: 1fr;
-          }
-          .control-group { justify-content: flex-start; }
+          .controls { grid-template-columns: 1fr; }
           .minimap-wrap { right: 14px; bottom: 14px; transform: scale(0.9); transform-origin: bottom right; }
+          .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
         @media (max-width: 980px) {
           .layout { grid-template-columns: 1fr; grid-template-rows: minmax(56vh, 60vh) auto; }
@@ -487,29 +213,32 @@ class HermesHACloudPanel extends HTMLElement {
           <div class="cinema-bar bottom"></div>
           <div class="hud">
             <div class="headline">
-              <div class="eyebrow">Hermes / Neural Memory Topology</div>
-              <h1>Mind Cloud</h1>
-              <div class="sub">Cinematic memory observatory med constellation- och timeline-läge, glow-trails mellan noder, zonkartor och mini-map. Dra för att rotera, använd sök för att fokusera och klicka för att låsa en nod.</div>
+              <div class="eyebrow">Home Assistant / topology observatory</div>
+              <h1>Hermes HA Cloud</h1>
+              <div class="sub">HA-specifik molnkarta med separata lager för add-ons, integrationer, areas, enheter, entiteter, automationer, scener, personer och problem-enheter. Kopplingar visas explicit mellan relaterade objekt och unavailable lyfts fram som larmkluster.</div>
               <div class="controls">
-                <label class="search">
-                  <input id="search" type="search" placeholder="Sök add-ons, integrationer, enheter, entiteter..." />
-                </label>
+                <label class="search"><input id="search" type="search" placeholder="Sök rum, enheter, integrationer, automations, personer..." /></label>
                 <div class="control-group control-pills" id="viewmodes"></div>
                 <div class="control-group control-pills" id="labelmodes"></div>
                 <div class="control-group control-pills" id="motionmodes"></div>
               </div>
               <div class="filters" id="filters"></div>
               <div class="legend">
-                <span class="memory">Memory</span>
-                <span class="skill">Enheter</span>
-                <span class="profile">Integrationer</span>
-                <span class="tool">Entiteter</span>
+                <span>Add-ons</span>
+                <span>Integrationer</span>
+                <span>Areas</span>
+                <span>Enheter</span>
+                <span>Entiteter</span>
+                <span>Automationer</span>
+                <span>Scener</span>
+                <span>Personer</span>
+                <span class="critical">Unavailable / problem</span>
               </div>
             </div>
           </div>
           <div class="minimap-wrap">
             <canvas id="minimap" width="180" height="180"></canvas>
-            <div class="minimap-copy">Cluster map / live focus radar</div>
+            <div class="minimap-copy">Layer map / live focus radar</div>
           </div>
         </div>
         <aside>
@@ -519,13 +248,19 @@ class HermesHACloudPanel extends HTMLElement {
           </div>
           <div class="card" id="details"></div>
           <div class="card">
+            <h3>Kopplingar</h3>
+            <div class="microcopy">Direkta relationer till vald nod: vilka saker den tillhör, styr, påverkar eller ligger i samma area som.</div>
+            <div class="relations" id="relations"></div>
+          </div>
+          <div class="card">
             <h3>Focus lane</h3>
-            <div class="microcopy">Viktigaste synliga noderna just nu. Påverkas av filter, sök, label-läge och vald vy.</div>
+            <div class="microcopy">Viktigaste synliga noderna just nu. Problem och unavailable får extra vikt.</div>
             <div class="focus-grid" id="focuslist"></div>
           </div>
           <div class="card">
-            <h3>Top enheter</h3>
-            <div class="list" id="topskills"></div>
+            <h3>Problem-enheter</h3>
+            <div class="microcopy">Enheter med unavailable- eller unknown-tyngd. Klicka för att följa kopplingarna.</div>
+            <div class="list" id="problemlist"></div>
           </div>
         </aside>
       </div>
@@ -536,55 +271,35 @@ class HermesHACloudPanel extends HTMLElement {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x040916);
     this.scene.fog = new THREE.FogExp2(0x060b18, 0.0021);
-
     this.camera = new THREE.PerspectiveCamera(46, 1, 0.1, 2200);
     this.camera.position.set(0, 22, 330);
-
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.domElement.classList.add('webgl');
     this.sceneHost.appendChild(this.renderer.domElement);
-
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.05;
     this.controls.enablePan = false;
     this.controls.minDistance = 180;
     this.controls.maxDistance = 580;
-    this.controls.autoRotate = false;
-    this.controls.target.set(0, 8, 0);
-
+    this.controls.target.set(0, 0, 0);
     this.scene.add(new THREE.AmbientLight(0x8fb5ff, 0.95));
-
     const keyLight = new THREE.PointLight(0x6ed5ff, 1.55, 1400, 2);
     keyLight.position.set(0, 44, 38);
     this.scene.add(keyLight);
-
     const fillLight = new THREE.PointLight(0x6e7dff, 0.72, 1200, 2);
     fillLight.position.set(-200, 90, 230);
     this.scene.add(fillLight);
-
     const rimLight = new THREE.PointLight(0x89ffc9, 0.48, 980, 2);
     rimLight.position.set(210, -42, -180);
     this.scene.add(rimLight);
-
-    this.coreGlow = new THREE.Mesh(
-      new THREE.SphereGeometry(18, 32, 32),
-      new THREE.MeshBasicMaterial({ color: 0x85e8ff, transparent: true, opacity: 0.95 })
-    );
+    this.coreGlow = new THREE.Mesh(new THREE.SphereGeometry(18, 32, 32), new THREE.MeshBasicMaterial({ color: 0x85e8ff, transparent: true, opacity: 0.95 }));
     this.scene.add(this.coreGlow);
-
-    this.coreShell = new THREE.Mesh(
-      new THREE.SphereGeometry(36, 32, 32),
-      new THREE.MeshBasicMaterial({ color: 0x4c69ff, transparent: true, opacity: 0.08 })
-    );
+    this.coreShell = new THREE.Mesh(new THREE.SphereGeometry(36, 32, 32), new THREE.MeshBasicMaterial({ color: 0x4c69ff, transparent: true, opacity: 0.08 }));
     this.scene.add(this.coreShell);
-
-    this.selectionAura = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 24, 24),
-      new THREE.MeshBasicMaterial({ color: 0xb9f4ff, transparent: true, opacity: 0.16 })
-    );
+    this.selectionAura = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 24), new THREE.MeshBasicMaterial({ color: 0xb9f4ff, transparent: true, opacity: 0.16 }));
     this.selectionAura.visible = false;
     this.scene.add(this.selectionAura);
 
@@ -600,8 +315,7 @@ class HermesHACloudPanel extends HTMLElement {
     }
     const starsGeo = new THREE.BufferGeometry();
     starsGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
-    const starsMat = new THREE.PointsMaterial({ color: 0x7fbfff, size: 1.6, transparent: true, opacity: 0.62 });
-    this.starfield = new THREE.Points(starsGeo, starsMat);
+    this.starfield = new THREE.Points(starsGeo, new THREE.PointsMaterial({ color: 0x7fbfff, size: 1.6, transparent: true, opacity: 0.62 }));
     this.scene.add(this.starfield);
 
     this.rings = [];
@@ -610,10 +324,7 @@ class HermesHACloudPanel extends HTMLElement {
       { radius: 96, tube: 0.16, color: 0x55d2ff, tiltX: 0.3, tiltY: 0.92 },
       { radius: 126, tube: 0.14, color: 0x83ffcb, tiltX: 1.34, tiltY: 0.12 },
     ].forEach((spec) => {
-      const ring = new THREE.Mesh(
-        new THREE.TorusGeometry(spec.radius, spec.tube, 14, 140),
-        new THREE.MeshBasicMaterial({ color: spec.color, transparent: true, opacity: 0.1 })
-      );
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(spec.radius, spec.tube, 14, 140), new THREE.MeshBasicMaterial({ color: spec.color, transparent: true, opacity: 0.1 }));
       ring.rotation.x = spec.tiltX;
       ring.rotation.y = spec.tiltY;
       this.scene.add(ring);
@@ -624,43 +335,22 @@ class HermesHACloudPanel extends HTMLElement {
     this.scene.add(this.graphRoot);
     this.clusterRoot = new THREE.Group();
     this.scene.add(this.clusterRoot);
-
-    this.pulsePoints = new THREE.Points(
-      new THREE.BufferGeometry(),
-      new THREE.PointsMaterial({ color: 0xb3f5ff, size: 3.8, transparent: true, opacity: 0.86, blending: THREE.AdditiveBlending })
-    );
+    this.pulsePoints = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ color: 0xb3f5ff, size: 3.8, transparent: true, opacity: 0.86, blending: THREE.AdditiveBlending }));
     this.scene.add(this.pulsePoints);
-
-    this.cometTrail = new THREE.Points(
-      new THREE.BufferGeometry(),
-      new THREE.PointsMaterial({ color: 0x91e8ff, size: 2.6, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending })
-    );
-    this.scene.add(this.cometTrail);
   }
 
   async loadData() {
     try {
       const apiPath = this.apiUrl.startsWith('/api/') ? this.apiUrl.slice(5) : this.apiUrl.replace(/^\//, '');
-      if (this._hass?.callApi) {
-        this.data = await this._hass.callApi('GET', apiPath);
-      } else {
-        const response = await fetch(this.apiUrl, { credentials: 'same-origin' });
-        if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-        this.data = await response.json();
-      }
+      this.data = this._hass?.callApi ? await this._hass.callApi('GET', apiPath) : await (await fetch(this.apiUrl, { credentials: 'same-origin' })).json();
       this.buildNodes();
       this.rebuildScene();
       this.updateControlPills();
-      this.applyVisibility();
-      this.selectedNode = {
-        title: this.data.core.title,
-        type: 'core',
-        group: 'core',
-        text: this.data.core.text,
-        meta: `${this.data.meta.memory_count} memories · ${this.data.meta.top_skill_count} visible skills`,
-      };
+      this.selectedNode = { title: this.data.core.title, type: 'core', layer: 'core', group: 'core', text: this.data.core.text, meta: `${this.data.meta.integration_count} integrationer · ${this.data.meta.link_count} kopplingar` };
       this.updateFilters();
+      this.applyVisibility();
       this.updateSidePanel();
+      this.updateProblemList();
       this.updateFocusLane();
       this.drawMiniMap();
     } catch (err) {
@@ -668,189 +358,152 @@ class HermesHACloudPanel extends HTMLElement {
     }
   }
 
+  getAllCollections() {
+    return [
+      ['addon', this.data?.addons || []],
+      ['integration', this.data?.integrations || []],
+      ['area', this.data?.areas || []],
+      ['device', this.data?.devices || []],
+      ['entity', this.data?.entities || []],
+      ['automation', this.data?.automations || []],
+      ['scene', this.data?.scenes || []],
+      ['person', this.data?.persons || []],
+      ['problem', this.data?.problem_devices || []],
+    ];
+  }
+
   colorFor(node) {
-    if (node.type === 'memory') return 0x7ee7ff;
-    if (node.type === 'skill') return 0xae8cff;
-    if (node.type === 'profile') return 0xffb86d;
-    if (node.type === 'tool') return 0x79f0ae;
-    return 0xd9e7ff;
+    if (node.severity === 'critical') return 0xff6b6b;
+    if (node.severity === 'warning') return 0xffb347;
+    return this.layerConfigs[node.layer]?.color || 0xd9e7ff;
   }
 
   colorCss(node) {
-    if (node.type === 'memory') return '#7ee7ff';
-    if (node.type === 'skill') return '#ae8cff';
-    if (node.type === 'profile') return '#ffb86d';
-    if (node.type === 'tool') return '#79f0ae';
-    return '#d9e7ff';
+    if (node.severity === 'critical') return '#ff6b6b';
+    if (node.severity === 'warning') return '#ffb347';
+    return this.layerConfigs[node.layer]?.css || '#d9e7ff';
   }
 
   buildNodes() {
     if (!this.data) return;
-    const clusters = this.clusterConfigs;
     const jitter = (seed, scale) => (Math.sin(seed * 12.9898) + Math.cos(seed * 78.233)) * 0.5 * scale;
     const groups = [];
-    const timelineSource = [
-      ...this.data.memories,
-      ...this.data.profile,
-      ...this.data.skills,
-      ...this.data.tools,
-    ];
-    timelineSource.sort((a, b) => String(a.updated_at || a.created_at || a.last_used_at || '').localeCompare(String(b.updated_at || b.created_at || b.last_used_at || '')));
-    const timelineOrder = new Map(timelineSource.map((item, idx) => [item.id, idx]));
-    const pack = (items, type) => {
-      const cluster = clusters[type];
+    const allItems = this.getAllCollections().flatMap(([, items]) => items);
+    const timelineOrder = new Map(allItems.map((item, idx) => [item.id, idx]));
+
+    const pack = (items, layer) => {
+      const cluster = this.layerConfigs[layer];
       items.forEach((item, idx) => {
         const s = idx + 1;
         const count = Math.max(items.length, 1);
-        const theta = (idx / count) * Math.PI * 2.6 + jitter(s, 0.35);
+        const theta = (idx / count) * Math.PI * 2.4 + jitter(s, 0.4);
         const phi = ((idx * 1.618) % count) / count * Math.PI;
-        const radial = 0.38 + ((idx % 7) / 6) * 0.64;
+        const radial = 0.32 + ((idx % 7) / 6) * 0.7;
         const basePosition = new THREE.Vector3(
-          cluster.center.x + Math.cos(theta) * Math.sin(phi + 0.4) * cluster.spread.x * radial + jitter(s * 0.7, 16),
-          cluster.center.y + Math.sin(theta * 1.3) * cluster.spread.y * radial + jitter(s * 1.1, 10),
-          cluster.center.z + Math.cos(phi) * cluster.spread.z * radial + jitter(s * 0.4, 14)
+          cluster.center.x + Math.cos(theta) * Math.sin(phi + 0.4) * cluster.spread.x * radial + jitter(s * 0.7, 10),
+          cluster.center.y + Math.sin(theta * 1.25) * cluster.spread.y * radial + jitter(s * 1.1, 8),
+          cluster.center.z + Math.cos(phi) * cluster.spread.z * radial + jitter(s * 0.4, 10)
         );
         const tIndex = timelineOrder.get(item.id) ?? idx;
-        const lineX = -180 + (tIndex / Math.max(timelineSource.length - 1, 1)) * 360;
-        const typeBand = { memory: -65, profile: -18, skill: 28, tool: 78 }[type] || 0;
-        const timelinePosition = new THREE.Vector3(
-          lineX,
-          typeBand + jitter(s * 0.9, 10),
-          Math.sin((tIndex + 1) * 0.7) * 40 + jitter(s * 0.5, 8)
-        );
+        const lineX = -180 + (tIndex / Math.max(allItems.length - 1, 1)) * 360;
+        const timelinePosition = new THREE.Vector3(lineX, cluster.band + jitter(s * 0.9, 7), Math.sin((tIndex + 1) * 0.7) * 34 + jitter(s * 0.5, 7));
         groups.push({
           ...item,
-          type,
+          layer,
+          type: layer,
           basePosition,
           timelinePosition,
           position: basePosition.clone(),
-          drift: 0.18 + (idx % 5) * 0.05,
-          wobble: 3.5 + (idx % 4) * 1.2,
+          drift: layer === 'problem' ? 0.1 : 0.18 + (idx % 5) * 0.05,
+          wobble: layer === 'problem' ? 1.6 : 2.8 + (idx % 4) * 1.1,
           phase: theta,
-          size: cluster.baseSize + (item.importance || 0.4) * 3.9,
-          alpha: 0.42 + (item.importance || 0.4) * 0.45,
+          size: cluster.baseSize + (item.importance || 0.4) * (layer === 'problem' ? 4.6 : 3.6),
+          alpha: item.severity === 'critical' ? 0.94 : 0.42 + (item.importance || 0.4) * 0.45,
           searchable: `${item.title || ''} ${item.text || ''} ${item.group || ''} ${item.category || ''} ${item.meta || ''}`.toLowerCase(),
         });
       });
     };
 
-    pack(this.data.memories, 'memory');
-    pack(this.data.profile, 'profile');
-    pack(this.data.skills, 'skill');
-    pack(this.data.tools, 'tool');
+    this.getAllCollections().forEach(([layer, items]) => pack(items, layer));
     this.nodes = groups;
-    this.updateTopSkills();
+    this.linkDefs = this.data.links || [];
   }
 
   rebuildScene() {
     while (this.graphRoot.children.length) {
       const child = this.graphRoot.children.pop();
-      if (child.geometry) child.geometry.dispose?.();
-      if (child.material) {
-        if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose?.());
-        else child.material.dispose?.();
-      }
-      if (child.parent) child.parent.remove(child);
+      child.geometry?.dispose?.();
+      if (child.material) Array.isArray(child.material) ? child.material.forEach((m) => m.dispose?.()) : child.material.dispose?.();
+      child.parent?.remove(child);
     }
     while (this.clusterRoot.children.length) {
       const child = this.clusterRoot.children.pop();
-      if (child.geometry) child.geometry.dispose?.();
-      if (child.material) child.material.dispose?.();
-      if (child.parent) child.parent.remove(child);
+      child.geometry?.dispose?.();
+      child.material?.dispose?.();
+      child.parent?.remove(child);
     }
 
-    this.linkPairs = [];
     this.nodeObjects = [];
     this.nodeMap = new Map();
     this.labelEls = new Map();
     this.labelsEl.innerHTML = '';
-    this.clusterZones = [];
 
-    Object.entries(this.clusterConfigs).forEach(([type, cfg]) => {
-      const zone = new THREE.Mesh(
-        new THREE.SphereGeometry(Math.max(cfg.spread.x, cfg.spread.y, cfg.spread.z) * 0.62, 36, 36),
-        new THREE.MeshBasicMaterial({ color: cfg.color, transparent: true, opacity: 0.045 })
-      );
+    Object.entries(this.layerConfigs).forEach(([layer, cfg]) => {
+      const zone = new THREE.Mesh(new THREE.SphereGeometry(Math.max(cfg.spread.x, cfg.spread.y, cfg.spread.z) * 0.54, 32, 32), new THREE.MeshBasicMaterial({ color: cfg.color, transparent: true, opacity: layer === 'problem' ? 0.08 : 0.04 }));
       zone.position.copy(cfg.center);
-      zone.scale.set(cfg.spread.x / 90, cfg.spread.y / 90, cfg.spread.z / 90);
+      zone.scale.set(cfg.spread.x / 78, cfg.spread.y / 78, cfg.spread.z / 78);
       this.clusterRoot.add(zone);
-      this.clusterZones.push({ type, mesh: zone, label: cfg.label });
-
-      const ring = new THREE.Mesh(
-        new THREE.TorusGeometry(Math.max(cfg.spread.x, cfg.spread.z) * 0.58, 0.26, 12, 100),
-        new THREE.MeshBasicMaterial({ color: cfg.color, transparent: true, opacity: 0.12 })
-      );
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(Math.max(cfg.spread.x, cfg.spread.z) * 0.46, 0.22, 12, 90), new THREE.MeshBasicMaterial({ color: cfg.color, transparent: true, opacity: layer === 'problem' ? 0.22 : 0.1 }));
       ring.position.copy(cfg.center);
-      ring.rotation.x = 1.28;
+      ring.rotation.x = 1.2;
       this.clusterRoot.add(ring);
-      this.clusterZones.push({ type, mesh: ring, label: cfg.label });
     });
 
     const sphereGeo = new THREE.SphereGeometry(1, 20, 20);
     for (const node of this.nodes) {
       const color = this.colorFor(node);
-      const shellMaterial = new THREE.MeshPhysicalMaterial({
-        color,
-        emissive: color,
-        emissiveIntensity: 0.75,
-        roughness: 0.34,
-        metalness: 0.04,
-        transparent: true,
-        opacity: Math.min(0.98, node.alpha),
-      });
+      const shellMaterial = new THREE.MeshPhysicalMaterial({ color, emissive: color, emissiveIntensity: node.severity === 'critical' ? 1.2 : 0.75, roughness: 0.34, metalness: 0.04, transparent: true, opacity: Math.min(0.98, node.alpha) });
       const mesh = new THREE.Mesh(sphereGeo.clone(), shellMaterial);
       mesh.position.copy(node.position);
       mesh.scale.setScalar(node.size);
       mesh.userData.node = node;
-
-      const halo = new THREE.Mesh(
-        new THREE.SphereGeometry(1.2, 18, 18),
-        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.08 })
-      );
-      halo.scale.setScalar(node.size * 1.72);
+      const halo = new THREE.Mesh(new THREE.SphereGeometry(1.2, 18, 18), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: node.severity === 'critical' ? 0.22 : 0.08 }));
+      halo.scale.setScalar(node.size * (node.severity === 'critical' ? 2.05 : 1.72));
       mesh.add(halo);
       mesh.userData.halo = halo;
-
       this.graphRoot.add(mesh);
       this.nodeObjects.push(mesh);
       this.nodeMap.set(node.id, mesh);
       this.labelsEl.appendChild(this.createLabelElement(node));
     }
 
-    const linkPositions = [];
-    const linkPairs = [];
-    for (let i = 0; i < this.nodes.length; i++) {
-      const a = this.nodes[i];
-      const neighbors = [];
-      for (let j = i + 1; j < this.nodes.length; j++) {
-        const b = this.nodes[j];
-        const baseDist = a.basePosition.distanceTo(b.basePosition);
-        const threshold = a.type === b.type ? 74 : 60;
-        if (baseDist < threshold) neighbors.push({ b, baseDist });
-      }
-      neighbors.sort((x, y) => x.baseDist - y.baseDist);
-      for (const { b } of neighbors.slice(0, a.importance > 0.72 ? 3 : 2)) {
-        linkPositions.push(a.position.x, a.position.y, a.position.z, b.position.x, b.position.y, b.position.z);
-        linkPairs.push({ a: this.nodeMap.get(a.id), b: this.nodeMap.get(b.id), speed: 0.35 + ((i + b.size) % 4) * 0.12 });
-      }
+    const pairs = [];
+    const positions = [];
+    for (const link of this.linkDefs) {
+      const a = this.nodeMap.get(link.source);
+      const b = this.nodeMap.get(link.target);
+      if (!a || !b) continue;
+      pairs.push({ a, b, relation: link.relation, weight: link.weight || 1, key: `${link.source}|${link.target}|${link.relation}` });
+      positions.push(a.position.x, a.position.y, a.position.z, b.position.x, b.position.y, b.position.z);
     }
-
-    this.linkPairs = linkPairs;
-    if (linkPositions.length) {
+    this.linkPairs = pairs;
+    if (positions.length) {
       const lineGeo = new THREE.BufferGeometry();
-      lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(linkPositions, 3));
-      const lineMat = new THREE.LineBasicMaterial({ color: 0x86c2ff, transparent: true, opacity: 0.16 });
-      this.lines = new THREE.LineSegments(lineGeo, lineMat);
+      lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      this.lines = new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({ color: 0x86c2ff, transparent: true, opacity: 0.18 }));
       this.graphRoot.add(this.lines);
       this.updatePulseGeometry();
+    } else {
+      this.lines = null;
+      this.pulsePoints.geometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(0), 3));
     }
   }
 
   updatePulseGeometry() {
-    const count = Math.min(this.linkPairs.length, 110);
+    const count = Math.min(this.linkPairs.length, 260);
     this.pulseCount = count;
     this.pulseProgress = Array.from({ length: count }, (_, idx) => (idx / Math.max(count, 1)) % 1);
-    this.pulseSpeeds = Array.from({ length: count }, (_, idx) => this.linkPairs[idx]?.speed || 0.5);
+    this.pulseSpeeds = Array.from({ length: count }, (_, idx) => 0.6 + ((idx % 5) * 0.08));
     const positions = new Float32Array(count * 3);
     this.pulsePoints.geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   }
@@ -858,9 +511,8 @@ class HermesHACloudPanel extends HTMLElement {
   createLabelElement(node) {
     const el = document.createElement('button');
     el.type = 'button';
-    el.className = 'node-label';
+    el.className = `node-label ${node.severity || 'ok'}`;
     el.dataset.id = node.id;
-    el.dataset.type = node.type;
     const title = document.createElement('span');
     title.className = 't';
     title.textContent = node.title || node.id;
@@ -868,23 +520,20 @@ class HermesHACloudPanel extends HTMLElement {
     meta.className = 'm';
     meta.textContent = node.meta || node.group || node.category || node.type;
     el.append(title, meta);
-    el.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      this.selectNodeById(node.id);
-    });
+    el.addEventListener('click', (ev) => { ev.stopPropagation(); this.selectNodeById(node.id); });
     this.labelEls.set(node.id, el);
     return el;
   }
 
   installEvents() {
     this.renderer.domElement.addEventListener('pointermove', (ev) => this.onPointerMove(ev));
-    this.renderer.domElement.addEventListener('pointerleave', () => {
-      this.hoveredNode = null;
-      this.tooltipEl.classList.remove('visible');
+    this.renderer.domElement.addEventListener('pointerleave', () => { this.hoveredNode = null; this.updateSidePanel(); });
+    this.renderer.domElement.addEventListener('click', () => {
+      if (this.hoveredNode?.id) this.selectNodeById(this.hoveredNode.id);
+      else { this.selectedNode = { title: this.data?.core?.title || 'Hermes HA Cloud', type: 'core', layer: 'core', text: this.data?.core?.text || '' }; this.updateSidePanel(); }
     });
-    this.renderer.domElement.addEventListener('click', () => this.onClick());
     this.searchEl?.addEventListener('input', (ev) => {
-      this.searchQuery = (ev.target.value || '').trim().toLowerCase();
+      this.searchQuery = String(ev.target.value || '').trim().toLowerCase();
       this.applyVisibility();
       this.updateFocusLane();
       this.updateSidePanel();
@@ -892,95 +541,37 @@ class HermesHACloudPanel extends HTMLElement {
   }
 
   onPointerMove(ev) {
+    if (!this.renderer || !this.camera) return;
     const rect = this.renderer.domElement.getBoundingClientRect();
-    const x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
-    const y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
-    this.pointer.set(x, y);
+    this.pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+    this.pointer.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
     this.raycaster.setFromCamera(this.pointer, this.camera);
-    const hits = this.raycaster.intersectObjects(this.nodeObjects.filter((mesh) => mesh.visible));
-    const hit = hits[0]?.object?.userData?.node || null;
-    this.hoveredNode = hit;
-    if (hit) {
-      this.tooltipEl.textContent = hit.title;
-      this.tooltipEl.style.left = `${ev.clientX - rect.left}px`;
-      this.tooltipEl.style.top = `${ev.clientY - rect.top}px`;
-      this.tooltipEl.classList.add('visible');
-      if (this.hoveredNode !== this.selectedNode) this.updateHoverDetails();
-    } else {
-      this.tooltipEl.classList.remove('visible');
-    }
-  }
-
-  onClick() {
-    if (!this.hoveredNode) return;
-    this.selectedNode = this.hoveredNode;
+    const hits = this.raycaster.intersectObjects(this.nodeObjects);
+    const hit = hits.find((entry) => entry.object?.userData?.node && entry.object.visible);
+    this.hoveredNode = hit?.object?.userData?.node || null;
     this.updateSidePanel();
-    this.updateFocusLane();
-    const mesh = this.nodeMap.get(this.selectedNode.id);
-    if (mesh) this.controls.target.lerp(mesh.position, 0.35);
-  }
-
-  selectNodeById(id) {
-    const mesh = this.nodeMap.get(id);
-    const node = mesh?.userData?.node;
-    if (!node) return;
-    this.selectedNode = node;
-    this.updateSidePanel();
-    this.updateFocusLane();
-    this.controls.target.lerp(mesh.position, 0.4);
   }
 
   updateControlPills() {
-    const build = (host, current, items, onSelect) => {
+    const build = (host, active, entries, onPick) => {
+      if (!host) return;
       host.innerHTML = '';
-      items.forEach(([value, label]) => {
+      entries.forEach(([value, label]) => {
         const button = document.createElement('button');
-        button.className = 'pill';
         button.textContent = label;
-        if (current === value) button.classList.add('active');
-        button.addEventListener('click', () => onSelect(value));
+        if (active === value) button.classList.add('active');
+        button.addEventListener('click', () => onPick(value));
         host.appendChild(button);
       });
     };
-
-    build(this.viewModeEl, this.viewMode, [
-      ['constellation', 'Constellations'],
-      ['timeline', 'Timeline'],
-    ], (value) => {
-      this.viewMode = value;
-      this.updateControlPills();
-      this.updateFocusLane();
-      this.drawMiniMap();
-    });
-
-    build(this.labelModeEl, this.labelMode, [
-      ['smart', 'Labels smart'],
-      ['all', 'Labels all'],
-      ['off', 'Labels off'],
-    ], (value) => {
-      this.labelMode = value;
-      this.updateControlPills();
-      this.updateFocusLane();
-    });
-
-    build(this.motionModeEl, this.motionMode, [
-      ['calm', 'Motion calm'],
-      ['live', 'Motion live'],
-      ['still', 'Motion still'],
-    ], (value) => {
-      this.motionMode = value;
-      this.autoDrift = value === 'live' ? 0.0001 : value === 'still' ? 0 : 0.00004;
-      this.updateControlPills();
-    });
+    build(this.viewModeEl, this.viewMode, [['constellation', 'Constellation'], ['timeline', 'Timeline']], (value) => { this.viewMode = value; this.drawMiniMap(); });
+    build(this.labelModeEl, this.labelMode, [['smart', 'Labels smart'], ['all', 'Labels all'], ['off', 'Labels off']], (value) => { this.labelMode = value; this.updateControlPills(); this.updateFocusLane(); });
+    build(this.motionModeEl, this.motionMode, [['calm', 'Motion calm'], ['live', 'Motion live'], ['still', 'Motion still']], (value) => { this.motionMode = value; this.autoDrift = value === 'live' ? 0.0001 : value === 'still' ? 0 : 0.00004; this.updateControlPills(); });
   }
 
   updateFilters() {
     const modes = [
-      ['all', 'All'],
-      ['memory', 'Add-ons'],
-      ['skill', 'Enheter'],
-      ['profile', 'Integrationer'],
-      ['tool', 'Entiteter'],
+      ['all', 'Alla'], ['problem', 'Problem'], ['unavailable', 'Unavailable'], ['addon', 'Add-ons'], ['integration', 'Integrationer'], ['area', 'Areas'], ['device', 'Enheter'], ['entity', 'Entiteter'], ['automation', 'Automationer'], ['scene', 'Scener'], ['person', 'Personer'],
     ];
     this.filterEl.innerHTML = '';
     modes.forEach(([value, label]) => {
@@ -992,47 +583,77 @@ class HermesHACloudPanel extends HTMLElement {
         this.applyVisibility();
         this.updateFilters();
         this.updateFocusLane();
+        this.updateSidePanel();
       });
       this.filterEl.appendChild(button);
     });
   }
 
-  matchesSearch(node) {
-    return !this.searchQuery || node.searchable.includes(this.searchQuery);
+  matchesSearch(node) { return !this.searchQuery || node.searchable.includes(this.searchQuery); }
+  modeMatches(node) {
+    if (this.mode === 'all') return true;
+    if (this.mode === 'unavailable') return node.severity === 'critical' || node.state === 'unavailable';
+    return node.layer === this.mode;
   }
 
   applyVisibility() {
     for (const mesh of this.nodeObjects) {
       const node = mesh.userData.node;
-      const typeMatch = this.mode === 'all' || node.type === this.mode;
-      mesh.visible = typeMatch && this.matchesSearch(node);
+      mesh.visible = this.modeMatches(node) && this.matchesSearch(node);
       const label = this.labelEls.get(node.id);
       if (label) label.style.opacity = '0';
     }
-    if (this.lines) this.lines.visible = this.mode === 'all' || !!this.searchQuery;
+    if (this.lines) this.lines.visible = true;
     this.drawMiniMap();
   }
 
   visibleNodesSorted() {
-    return this.nodeObjects
-      .filter((mesh) => mesh.visible)
-      .map((mesh) => mesh.userData.node)
-      .sort((a, b) => (b.importance || 0) - (a.importance || 0));
+    return this.nodeObjects.filter((mesh) => mesh.visible).map((mesh) => mesh.userData.node).sort((a, b) => {
+      const aw = (a.severity === 'critical' ? 10 : a.severity === 'warning' ? 4 : 0) + (a.importance || 0);
+      const bw = (b.severity === 'critical' ? 10 : b.severity === 'warning' ? 4 : 0) + (b.importance || 0);
+      return bw - aw;
+    });
   }
 
-  updateTopSkills() {
-    const el = this.shadowRoot.getElementById('topskills');
-    if (!this.data) return;
-    el.innerHTML = '';
-    this.data.skills.slice(0, 8).forEach((skill) => {
+  selectNodeById(id) {
+    const mesh = this.nodeMap.get(id);
+    if (!mesh) return;
+    this.selectedNode = mesh.userData.node;
+    this.updateSidePanel();
+    this.updateFocusLane();
+    this.drawMiniMap();
+  }
+
+  getRelatedNodes(node) {
+    if (!node?.id) return [];
+    const seen = new Map();
+    (this.linkDefs || []).forEach((link) => {
+      let otherId = null;
+      let relation = link.relation;
+      if (link.source === node.id) otherId = link.target;
+      else if (link.target === node.id) { otherId = link.source; relation = `← ${relation}`; }
+      if (!otherId) return;
+      const other = this.nodeMap.get(otherId)?.userData?.node;
+      if (!other) return;
+      if (!seen.has(otherId)) seen.set(otherId, { ...other, relation, weight: link.weight || 1 });
+    });
+    return [...seen.values()].sort((a, b) => ((b.severity === 'critical') - (a.severity === 'critical')) || ((b.importance || 0) - (a.importance || 0))).slice(0, 16);
+  }
+
+  updateProblemList() {
+    if (!this.problemListEl) return;
+    const problems = this.data?.problem_devices || [];
+    this.problemListEl.innerHTML = '';
+    if (!problems.length) {
+      this.problemListEl.innerHTML = '<div class="empty">Inga problem-enheter just nu.</div>';
+      return;
+    }
+    problems.slice(0, 10).forEach((item) => {
       const button = document.createElement('button');
       button.className = 'row';
-      button.innerHTML = `
-        <strong>${this.escapeHtml(skill.title)}</strong>
-        <small>${this.escapeHtml(skill.meta || skill.category || '')}</small>
-      `;
-      button.addEventListener('click', () => this.selectNodeById(skill.id));
-      el.appendChild(button);
+      button.innerHTML = `<strong>${this.escapeHtml(item.title)}</strong><small>${this.escapeHtml(item.meta || item.text || '')}</small>`;
+      button.addEventListener('click', () => this.selectNodeById(item.id));
+      this.problemListEl.appendChild(button);
     });
   }
 
@@ -1042,72 +663,66 @@ class HermesHACloudPanel extends HTMLElement {
     const picks = [];
     const seen = new Set();
     [this.selectedNode, this.hoveredNode].forEach((node) => {
-      if (node?.id && !seen.has(node.id) && this.nodeMap.get(node.id)?.visible) {
-        picks.push(node);
-        seen.add(node.id);
-      }
+      if (node?.id && !seen.has(node.id) && this.nodeMap.get(node.id)?.visible) { picks.push(node); seen.add(node.id); }
     });
     items.forEach((node) => {
-      if (picks.length >= 8 || seen.has(node.id)) return;
-      picks.push(node);
-      seen.add(node.id);
+      if (picks.length >= 10 || seen.has(node.id)) return;
+      picks.push(node); seen.add(node.id);
     });
-
     this.focusListEl.innerHTML = '';
     picks.forEach((item) => {
       const button = document.createElement('button');
       button.className = 'focus-row';
-      button.innerHTML = `
-        <strong>${this.escapeHtml(item.title)}</strong>
-        <small>${this.escapeHtml(item.meta || item.group || item.category || item.type)}</small>
-      `;
+      button.innerHTML = `<strong>${this.escapeHtml(item.title)}</strong><small>${this.escapeHtml(item.meta || item.group || item.category || item.type)}</small>`;
       button.addEventListener('click', () => this.selectNodeById(item.id));
       this.focusListEl.appendChild(button);
     });
   }
 
-  updateSidePanel() {
-    if (!this.data) return;
+  updateStats() {
+    const m = this.data?.meta || {};
     const visibleCount = this.visibleNodesSorted().length;
     this.statsEl.innerHTML = `
-      <div class="stat"><div class="v">${this.data.meta.memory_count}</div><div class="k">Add-ons</div></div>
-      <div class="stat"><div class="v">${this.data.meta.profile_count}</div><div class="k">Integrationer</div></div>
-      <div class="stat"><div class="v">${this.data.meta.fact_count || 0}</div><div class="k">Enheter</div></div>
-      <div class="stat"><div class="v">${visibleCount}</div><div class="k">Visible nodes</div></div>
-    `;
-    const item = this.selectedNode;
-    if (!item) return;
-    const chips = [];
-    if (item.group) chips.push(item.group);
-    if (item.category) chips.push(item.category);
-    if (item.use_count != null) chips.push(`uses ${item.use_count}`);
-    if (item.view_count != null) chips.push(`views ${item.view_count}`);
-    if (item.patch_count != null) chips.push(`patches ${item.patch_count}`);
-    if (item.meta) chips.push(item.meta);
-    if (item.updated_at) chips.push(`updated ${item.updated_at}`);
-    if (item.created_at && item.created_at !== item.updated_at) chips.push(`created ${item.created_at}`);
-
-    this.detailsEl.innerHTML = `
-      <div class="detail-type">${this.escapeHtml(item.type || 'core')}</div>
-      <h3>${this.escapeHtml(item.title)}</h3>
-      <div class="detail-body">${this.escapeHtml(item.text || '')}</div>
-      <div class="chips">${chips.map((chip) => `<span class="chip">${this.escapeHtml(chip)}</span>`).join('')}</div>
+      <div class="stat"><div class="v">${m.integration_count || 0}</div><div class="k">Integrationer</div></div>
+      <div class="stat"><div class="v">${m.area_count || 0}</div><div class="k">Areas</div></div>
+      <div class="stat"><div class="v">${m.device_count || 0}</div><div class="k">Enheter</div></div>
+      <div class="stat"><div class="v">${m.automation_count || 0}</div><div class="k">Automationer</div></div>
+      <div class="stat"><div class="v">${m.scene_count || 0}</div><div class="k">Scener</div></div>
+      <div class="stat"><div class="v">${visibleCount}</div><div class="k">Synliga noder</div></div>
+      <div class="stat ${m.unavailable_count ? 'critical' : ''}"><div class="v">${m.unavailable_count || 0}</div><div class="k">Unavailable</div></div>
+      <div class="stat ${m.problem_device_count ? 'critical' : ''}"><div class="v">${m.problem_device_count || 0}</div><div class="k">Problem-enheter</div></div>
+      <div class="stat"><div class="v">${m.link_count || 0}</div><div class="k">Kopplingar</div></div>
     `;
   }
 
-  updateHoverDetails() {
-    if (!this.hoveredNode) return;
-    const item = this.hoveredNode;
+  updateSidePanel() {
+    if (!this.data) return;
+    this.updateStats();
+    const item = this.selectedNode || this.hoveredNode;
+    if (!item) return;
+    const chips = [];
+    if (item.layer && item.layer !== 'core') chips.push(item.layer);
+    if (item.group) chips.push(item.group);
+    if (item.category) chips.push(item.category);
+    if (item.state) chips.push(`state ${item.state}`);
+    if (item.use_count != null) chips.push(`count ${item.use_count}`);
+    if (item.view_count != null) chips.push(`unavailable ${item.view_count}`);
+    if (item.meta) chips.push(item.meta);
     this.detailsEl.innerHTML = `
-      <div class="detail-type">hover · ${this.escapeHtml(item.type)}</div>
+      <div class="detail-type">${this.escapeHtml(item.layer || item.type || 'core')}</div>
       <h3>${this.escapeHtml(item.title)}</h3>
       <div class="detail-body">${this.escapeHtml(item.text || '')}</div>
-      <div class="chips">
-        <span class="chip">${this.escapeHtml(item.group || item.category || 'node')}</span>
-        ${item.use_count != null ? `<span class="chip">uses ${this.escapeHtml(item.use_count)}</span>` : ''}
-        ${item.meta ? `<span class="chip">${this.escapeHtml(item.meta)}</span>` : ''}
-      </div>
+      <div class="chips">${chips.map((chip) => `<span class="chip ${item.severity === 'critical' && String(chip).includes('unavailable') ? 'critical' : item.severity === 'warning' ? 'warning' : ''}">${this.escapeHtml(chip)}</span>`).join('')}</div>
     `;
+    const related = this.getRelatedNodes(item);
+    this.relationsEl.innerHTML = related.length ? '' : '<div class="empty">Ingen explicit koppling hittades för vald nod.</div>';
+    related.forEach((rel) => {
+      const button = document.createElement('button');
+      button.className = 'relation-btn';
+      button.innerHTML = `<strong>${this.escapeHtml(rel.title)}</strong><small>${this.escapeHtml(rel.relation)} · ${this.escapeHtml(rel.meta || rel.group || rel.layer || '')}</small>`;
+      button.addEventListener('click', () => this.selectNodeById(rel.id));
+      this.relationsEl.appendChild(button);
+    });
   }
 
   updateLabelAnchors() {
@@ -1116,37 +731,24 @@ class HermesHACloudPanel extends HTMLElement {
     const chosenIds = new Set();
     if (this.labelMode !== 'off') {
       [this.selectedNode, this.hoveredNode].forEach((node) => node?.id && chosenIds.add(node.id));
-      const max = this.labelMode === 'all' ? 26 : 12;
+      const max = this.labelMode === 'all' ? 28 : 14;
       preferred.forEach((node) => {
         if (chosenIds.size >= max) return;
-        if (this.labelMode === 'all' || (node.importance || 0) >= 0.72 || this.matchesSearch(node)) {
-          chosenIds.add(node.id);
-        }
+        if (this.labelMode === 'all' || node.severity === 'critical' || (node.importance || 0) >= 0.74 || this.matchesSearch(node)) chosenIds.add(node.id);
       });
     }
-
     this.labelEls.forEach((el, id) => {
       const mesh = this.nodeMap.get(id);
-      if (!mesh?.visible || !chosenIds.has(id) || this.labelMode === 'off') {
-        el.style.opacity = '0';
-        el.classList.remove('active');
-        return;
-      }
+      if (!mesh?.visible || !chosenIds.has(id) || this.labelMode === 'off') { el.style.opacity = '0'; el.classList.remove('active'); return; }
       const screen = mesh.position.clone().project(this.camera);
       const inFront = screen.z > -1 && screen.z < 1;
       const inBounds = screen.x > -1.12 && screen.x < 1.12 && screen.y > -1.12 && screen.y < 1.12;
-      if (!inFront || !inBounds) {
-        el.style.opacity = '0';
-        el.classList.remove('active');
-        return;
-      }
+      if (!inFront || !inBounds) { el.style.opacity = '0'; el.classList.remove('active'); return; }
       const x = (screen.x * 0.5 + 0.5) * this.width;
       const y = (-screen.y * 0.5 + 0.5) * this.height - Math.max(26, mesh.scale.x * 2.6);
-      el.style.left = `${x}px`;
-      el.style.top = `${y}px`;
-      el.style.opacity = String(this.selectedNode?.id === id || this.hoveredNode?.id === id ? 1 : 0.84);
-      if (this.selectedNode?.id === id || this.hoveredNode?.id === id) el.classList.add('active');
-      else el.classList.remove('active');
+      el.style.left = `${x}px`; el.style.top = `${y}px`;
+      el.style.opacity = String(this.selectedNode?.id === id || this.hoveredNode?.id === id ? 1 : 0.86);
+      if (this.selectedNode?.id === id || this.hoveredNode?.id === id) el.classList.add('active'); else el.classList.remove('active');
     });
   }
 
@@ -1158,64 +760,41 @@ class HermesHACloudPanel extends HTMLElement {
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = 'rgba(5, 9, 22, 0.96)';
     ctx.fillRect(0, 0, w, h);
-
     ctx.strokeStyle = 'rgba(126, 180, 255, 0.12)';
     ctx.lineWidth = 1;
-    for (let i = 1; i < 4; i++) {
-      ctx.beginPath();
-      ctx.arc(w / 2, h / 2, i * 24, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-
+    for (let i = 1; i < 4; i++) { ctx.beginPath(); ctx.arc(w / 2, h / 2, i * 24, 0, Math.PI * 2); ctx.stroke(); }
     const viewPos = (node) => this.viewMode === 'timeline' ? node.timelinePosition : node.basePosition;
-    const visible = this.visibleNodesSorted();
-    visible.forEach((node) => {
+    this.visibleNodesSorted().forEach((node) => {
       const p = viewPos(node);
       const x = w / 2 + (p.x / 240) * 66;
       const y = h / 2 + (p.z / 240) * 66;
       ctx.beginPath();
       ctx.fillStyle = this.colorCss(node);
-      ctx.globalAlpha = 0.85;
+      ctx.globalAlpha = node.severity === 'critical' ? 1 : 0.86;
       ctx.arc(x, y, Math.max(2.1, node.size * 0.34), 0, Math.PI * 2);
       ctx.fill();
     });
     ctx.globalAlpha = 1;
-
-    Object.entries(this.clusterConfigs).forEach(([type, cfg]) => {
-      const center = this.viewMode === 'timeline'
-        ? { x: { memory: -140, profile: -30, skill: 70, tool: 140 }[type], z: 0 }
-        : { x: cfg.center.x, z: cfg.center.z };
+    Object.entries(this.layerConfigs).forEach(([layer, cfg]) => {
+      const center = this.viewMode === 'timeline' ? { x: cfg.band * 1.5, z: 0 } : { x: cfg.center.x, z: cfg.center.z };
       const x = w / 2 + (center.x / 240) * 66;
       const y = h / 2 + (center.z / 240) * 66;
-      ctx.strokeStyle = `${this.colorCss({ type })}55`;
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      ctx.arc(x, y, 15, 0, Math.PI * 2);
-      ctx.stroke();
+      ctx.strokeStyle = `${cfg.css}55`;
+      ctx.lineWidth = layer === 'problem' ? 2 : 1.2;
+      ctx.beginPath(); ctx.arc(x, y, layer === 'problem' ? 17 : 13, 0, Math.PI * 2); ctx.stroke();
     });
-
     const focus = this.selectedNode || this.hoveredNode;
     if (focus?.id) {
-      const p = viewPos(focus);
-      const x = w / 2 + (p.x / 240) * 66;
-      const y = h / 2 + (p.z / 240) * 66;
-      ctx.beginPath();
-      ctx.fillStyle = '#ffffff';
-      ctx.arc(x, y, 4.4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#7ee7ff';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(x, y, 9.5, 0, Math.PI * 2);
-      ctx.stroke();
+      const p = viewPos(focus); const x = w / 2 + (p.x / 240) * 66; const y = h / 2 + (p.z / 240) * 66;
+      ctx.beginPath(); ctx.fillStyle = '#ffffff'; ctx.arc(x, y, 4.4, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = focus.severity === 'critical' ? '#ff6b6b' : '#7ee7ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 9.5, 0, Math.PI * 2); ctx.stroke();
     }
   }
 
   resize() {
     if (!this.sceneHost || !this.renderer || !this.camera) return;
     const rect = this.sceneHost.getBoundingClientRect();
-    this.width = rect.width;
-    this.height = rect.height;
+    this.width = rect.width; this.height = rect.height;
     this.camera.aspect = rect.width / rect.height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(rect.width, rect.height, false);
@@ -1227,35 +806,12 @@ class HermesHACloudPanel extends HTMLElement {
     this.lastTime = time;
     const t = time * 0.001;
     const motionFactor = this.motionMode === 'live' ? 1.9 : this.motionMode === 'still' ? 0 : 1;
-
     this.graphRoot.rotation.y += this.autoDrift * dt;
     this.coreGlow.scale.setScalar(1 + Math.sin(t * 1.2) * 0.06);
     this.coreShell.rotation.y -= this.autoDrift * dt * 3;
     this.coreShell.rotation.x += this.autoDrift * dt * 1.3;
-
-    if (this.starfield) {
-      this.starfield.rotation.y += 0.000012 * dt * (motionFactor || 0.2);
-      this.starfield.rotation.x = Math.sin(t * 0.08) * 0.18;
-    }
-    this.rings?.forEach((ring, idx) => {
-      ring.rotation.y += (0.00005 + idx * 0.000015) * dt * (motionFactor || 0.15);
-      ring.rotation.z += (0.00003 + idx * 0.00001) * dt * (motionFactor || 0.1);
-    });
-
-    for (const zone of this.clusterZones) {
-      zone.mesh.rotation.y += 0.00003 * dt * (motionFactor || 0.1);
-      zone.mesh.rotation.x += 0.00001 * dt * (motionFactor || 0.08);
-      if (this.viewMode === 'timeline') {
-        zone.mesh.position.lerp(new THREE.Vector3(
-          { memory: -140, profile: -40, skill: 50, tool: 140 }[zone.type] || 0,
-          0,
-          0
-        ), 0.08);
-      } else {
-        const cfg = this.clusterConfigs[zone.type];
-        zone.mesh.position.lerp(cfg.center, 0.08);
-      }
-    }
+    if (this.starfield) { this.starfield.rotation.y += 0.000012 * dt * (motionFactor || 0.2); this.starfield.rotation.x = Math.sin(t * 0.08) * 0.18; }
+    this.rings?.forEach((ring, idx) => { ring.rotation.y += (0.00005 + idx * 0.000015) * dt * (motionFactor || 0.15); ring.rotation.z += (0.00003 + idx * 0.00001) * dt * (motionFactor || 0.1); });
 
     const positions = this.pulsePoints.geometry.attributes.position?.array;
     for (const mesh of this.nodeObjects) {
@@ -1271,9 +827,9 @@ class HermesHACloudPanel extends HTMLElement {
       const active = this.hoveredNode?.id === node.id || this.selectedNode?.id === node.id;
       const scale = active ? node.size * 1.18 : node.size;
       mesh.scale.lerp(new THREE.Vector3(scale, scale, scale), 0.18);
-      mesh.material.emissiveIntensity = active ? 1.38 : 0.72;
+      mesh.material.emissiveIntensity = active ? 1.4 : node.severity === 'critical' ? 1.18 : 0.72;
       mesh.material.opacity = active ? 1 : Math.min(0.98, node.alpha);
-      if (mesh.userData.halo) mesh.userData.halo.material.opacity = active ? 0.2 : 0.08;
+      if (mesh.userData.halo) mesh.userData.halo.material.opacity = active ? 0.2 : (node.severity === 'critical' ? 0.18 : 0.08);
     }
 
     const focusMesh = this.nodeMap.get(this.selectedNode?.id || this.hoveredNode?.id);
@@ -1282,15 +838,15 @@ class HermesHACloudPanel extends HTMLElement {
       this.selectionAura.visible = true;
       this.selectionAura.position.copy(focusMesh.position);
       this.selectionAura.scale.setScalar(focusMesh.scale.x * pulse);
+      this.selectionAura.material.color.set(this.colorFor(focusMesh.userData.node));
       this.selectionAura.material.opacity = this.selectedNode ? 0.18 : 0.1;
-    } else {
-      this.selectionAura.visible = false;
-    }
+    } else this.selectionAura.visible = false;
 
     if (this.lines?.geometry && this.linkPairs?.length) {
       const pos = this.lines.geometry.attributes.position.array;
       let k = 0;
       this.linkPairs.forEach(({ a, b }, idx) => {
+        const active = this.selectedNode?.id && (a.userData.node.id === this.selectedNode.id || b.userData.node.id === this.selectedNode.id);
         pos[k++] = a.position.x; pos[k++] = a.position.y; pos[k++] = a.position.z;
         pos[k++] = b.position.x; pos[k++] = b.position.y; pos[k++] = b.position.z;
         if (positions && idx < this.pulseCount) {
@@ -1300,23 +856,12 @@ class HermesHACloudPanel extends HTMLElement {
           positions[idx * 3 + 1] = a.position.y + (b.position.y - a.position.y) * p;
           positions[idx * 3 + 2] = a.position.z + (b.position.z - a.position.z) * p;
         }
+        if (active && this.lines.material) this.lines.material.opacity = 0.38;
       });
       this.lines.geometry.attributes.position.needsUpdate = true;
-      if (this.pulsePoints.geometry.attributes.position) {
-        this.pulsePoints.geometry.attributes.position.needsUpdate = true;
-      }
+      if (this.pulsePoints.geometry.attributes.position) this.pulsePoints.geometry.attributes.position.needsUpdate = true;
+      if (!this.selectedNode && this.lines.material) this.lines.material.opacity = 0.18;
     }
-
-    const cometPositions = new Float32Array(48 * 3);
-    for (let i = 0; i < 48; i++) {
-      const p = i / 48;
-      const angle = t * (0.35 + p * 0.6) + p * Math.PI * 2;
-      const radius = 90 + p * 120;
-      cometPositions[i * 3] = Math.cos(angle) * radius;
-      cometPositions[i * 3 + 1] = Math.sin(angle * 1.7) * 22;
-      cometPositions[i * 3 + 2] = Math.sin(angle) * radius;
-    }
-    this.cometTrail.geometry.setAttribute('position', new THREE.Float32BufferAttribute(cometPositions, 3));
 
     this.updateLabelAnchors();
     this.drawMiniMap();
