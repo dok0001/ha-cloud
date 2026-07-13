@@ -81,15 +81,15 @@ class HermesHACloudPanel extends HTMLElement {
 
   createLayerConfigs() {
     return {
-      addon: { label: 'Add-ons', color: 0x6dd9ff, css: '#6dd9ff', center: new THREE.Vector3(-178, 54, 42), spread: new THREE.Vector3(34, 18, 24), baseSize: 2.55, band: -112 },
-      integration: { label: 'Integrationer', color: 0xffb86d, css: '#ffb86d', center: new THREE.Vector3(-82, 22, 14), spread: new THREE.Vector3(44, 22, 28), baseSize: 2.95, band: -78 },
-      area: { label: 'Areas / rum', color: 0x4bc0ff, css: '#4bc0ff', center: new THREE.Vector3(18, 60, 34), spread: new THREE.Vector3(42, 22, 28), baseSize: 3.15, band: -42 },
-      device: { label: 'Enheter', color: 0xae8cff, css: '#ae8cff', center: new THREE.Vector3(128, 30, -6), spread: new THREE.Vector3(54, 32, 36), baseSize: 3.0, band: -2 },
-      entity: { label: 'Entiteter', color: 0x79f0ae, css: '#79f0ae', center: new THREE.Vector3(0, -20, -126), spread: new THREE.Vector3(82, 26, 28), baseSize: 2.05, band: 38 },
-      automation: { label: 'Automationer', color: 0xffe36c, css: '#ffe36c', center: new THREE.Vector3(-136, -54, -12), spread: new THREE.Vector3(34, 18, 24), baseSize: 2.7, band: 76 },
-      scene: { label: 'Scener', color: 0xff9ecf, css: '#ff9ecf', center: new THREE.Vector3(-22, -82, 44), spread: new THREE.Vector3(28, 16, 22), baseSize: 2.7, band: 108 },
-      person: { label: 'Personer', color: 0xc0f7ff, css: '#c0f7ff', center: new THREE.Vector3(90, -78, 56), spread: new THREE.Vector3(20, 14, 16), baseSize: 3.1, band: 138 },
-      problem: { label: 'Problem-enheter', color: 0xff6b6b, css: '#ff6b6b', center: new THREE.Vector3(188, -8, 102), spread: new THREE.Vector3(20, 12, 14), baseSize: 4.1, band: 168 },
+      addon: { label: 'Add-ons', color: 0x6dd9ff, css: '#6dd9ff', center: new THREE.Vector3(-178, 54, 42), spread: new THREE.Vector3(34, 18, 24), baseSize: 1.95, band: -112 },
+      integration: { label: 'Integrationer', color: 0xffb86d, css: '#ffb86d', center: new THREE.Vector3(-82, 22, 14), spread: new THREE.Vector3(44, 22, 28), baseSize: 2.2, band: -78 },
+      area: { label: 'Areas / rum', color: 0x4bc0ff, css: '#4bc0ff', center: new THREE.Vector3(18, 60, 34), spread: new THREE.Vector3(42, 22, 28), baseSize: 2.35, band: -42 },
+      device: { label: 'Enheter', color: 0xae8cff, css: '#ae8cff', center: new THREE.Vector3(128, 30, -6), spread: new THREE.Vector3(54, 32, 36), baseSize: 2.25, band: -2 },
+      entity: { label: 'Entiteter', color: 0x79f0ae, css: '#79f0ae', center: new THREE.Vector3(0, -20, -126), spread: new THREE.Vector3(82, 26, 28), baseSize: 1.55, band: 38 },
+      automation: { label: 'Automationer', color: 0xffe36c, css: '#ffe36c', center: new THREE.Vector3(-136, -54, -12), spread: new THREE.Vector3(34, 18, 24), baseSize: 2.0, band: 76 },
+      scene: { label: 'Scener', color: 0xff9ecf, css: '#ff9ecf', center: new THREE.Vector3(-22, -82, 44), spread: new THREE.Vector3(28, 16, 22), baseSize: 2.0, band: 108 },
+      person: { label: 'Personer', color: 0xc0f7ff, css: '#c0f7ff', center: new THREE.Vector3(90, -78, 56), spread: new THREE.Vector3(20, 14, 16), baseSize: 2.3, band: 138 },
+      problem: { label: 'Problem-enheter', color: 0xff6b6b, css: '#ff6b6b', center: new THREE.Vector3(188, -8, 102), spread: new THREE.Vector3(20, 12, 14), baseSize: 3.05, band: 168 },
     };
   }
 
@@ -427,7 +427,7 @@ class HermesHACloudPanel extends HTMLElement {
           drift: layer === 'problem' ? 0.1 : 0.18 + (idx % 5) * 0.05,
           wobble: layer === 'problem' ? 1.6 : 2.8 + (idx % 4) * 1.1,
           phase: theta,
-          size: cluster.baseSize + (item.importance || 0.4) * (layer === 'problem' ? 4.6 : 3.6),
+          size: cluster.baseSize + (item.importance || 0.4) * (layer === 'problem' ? 3.2 : 2.45),
           alpha: item.severity === 'critical' ? 0.94 : 0.42 + (item.importance || 0.4) * 0.45,
           searchable: `${item.title || ''} ${item.text || ''} ${item.group || ''} ${item.category || ''} ${item.meta || ''}`.toLowerCase(),
         };
