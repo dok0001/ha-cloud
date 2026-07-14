@@ -21,6 +21,7 @@ class HermesHACloudPanel extends HTMLElement {
     this.mobileControlsCollapsed = false;
     this.mobileMiniMapVisible = false;
     this.mobileTab = 'cloud';
+    this.sidebarView = 'panels';
     this.selectedNode = null;
     this.hoveredNode = null;
     this.searchQuery = '';
@@ -62,6 +63,8 @@ class HermesHACloudPanel extends HTMLElement {
     this.mobileTabsEl = this.shadowRoot.getElementById('mobiletabs');
     this.mobileCloudActionsEl = this.shadowRoot.getElementById('mobile-cloud-actions');
     this.mobileBottomNavEl = this.shadowRoot.getElementById('mobile-bottom-nav');
+    this.desktopHeaderTabsEl = this.shadowRoot.getElementById('desktop-header-tabs');
+    this.sidebarTabsDesktopEl = this.shadowRoot.getElementById('sidebartabs');
     this.mobileControlsToggleEl = this.shadowRoot.getElementById('mobile-controls-toggle');
     this.mobileMiniMapToggleEl = this.shadowRoot.getElementById('mobile-minimap-toggle');
     this.mobileControlsBodyEl = this.shadowRoot.getElementById('mobile-controls-body');
@@ -160,6 +163,7 @@ class HermesHACloudPanel extends HTMLElement {
       if (typeof prefs.settingsCollapsed === 'boolean') this.settingsCollapsed = prefs.settingsCollapsed;
       if (typeof prefs.drawerOpen === 'boolean') this.drawerOpen = prefs.drawerOpen;
       if (typeof prefs.mobileChromeHidden === 'boolean') this.mobileChromeHidden = prefs.mobileChromeHidden;
+      if (prefs.sidebarView) this.sidebarView = prefs.sidebarView;
       if (prefs.effects && typeof prefs.effects === 'object') this.effects = { ...this.effects, ...prefs.effects };
       this.autoDrift = this.motionMode === 'live' ? 0.0001 : this.motionMode === 'still' ? 0 : 0.00004;
     } catch {}
@@ -177,6 +181,7 @@ class HermesHACloudPanel extends HTMLElement {
         settingsCollapsed: this.settingsCollapsed,
         drawerOpen: this.drawerOpen,
         mobileChromeHidden: this.mobileChromeHidden,
+        sidebarView: this.sidebarView,
       }));
     } catch {}
   }
@@ -217,7 +222,7 @@ class HermesHACloudPanel extends HTMLElement {
         * { box-sizing: border-box; }
         .layout {
           display: grid;
-          grid-template-columns: minmax(0, 1.78fr) minmax(360px, 0.92fr);
+          grid-template-columns: 248px minmax(0, 1fr);
           min-height: 100vh;
           min-height: 100dvh;
           height: 100vh;
@@ -228,7 +233,7 @@ class HermesHACloudPanel extends HTMLElement {
             radial-gradient(circle at 54% 84%, rgba(56, 220, 187, 0.11), transparent 24%),
             linear-gradient(180deg, var(--bg1), var(--bg0));
         }
-        .scene-wrap { position: relative; overflow: hidden; border-right: 1px solid var(--border); }
+        .scene-wrap { position: relative; overflow: hidden; border-left: 1px solid var(--border); }
         #scene, .labels, .vignette, .grid-glow, .cinema-bar, .minimap-wrap { position: absolute; }
         #scene, .labels, .vignette, .grid-glow { inset: 0; }
         canvas.webgl { width: 100%; height: 100%; display: block; }
@@ -257,7 +262,49 @@ class HermesHACloudPanel extends HTMLElement {
         .node-label.warning { border-color: rgba(255, 179, 71, 0.5); }
         .node-label .t { display: block; font-size: 12px; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .node-label .m { display: block; margin-top: 3px; color: #9fb3dd; font-size: 10px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .hud { position: absolute; inset: 0 auto auto 0; width: min(860px, calc(100% - 28px)); margin: 16px; pointer-events: none; z-index: 4; }
+        .hud { position: absolute; inset: 84px auto auto 16px; width: min(920px, calc(100% - 64px)); margin: 0; pointer-events: none; z-index: 4; }
+        .desktop-header {
+          position: absolute;
+          top: 16px;
+          left: 16px;
+          right: 16px;
+          z-index: 6;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 8px 12px;
+          border: 1px solid rgba(130, 175, 255, 0.12);
+          border-radius: 14px;
+          background: rgba(8, 13, 26, 0.62);
+          backdrop-filter: blur(16px);
+          box-shadow: 0 10px 30px rgba(0,0,0,0.24);
+        }
+        .desktop-header-left,
+        .desktop-header-right,
+        .desktop-header-center {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .desktop-header-center { justify-content: center; flex: 1; }
+        .desktop-header button {
+          border: 1px solid rgba(140, 180, 255, 0.14);
+          background: transparent;
+          color: #94a3c7;
+          padding: 8px 12px;
+          border-radius: 10px;
+          cursor: pointer;
+          font: inherit;
+          font-size: 12px;
+          font-weight: 600;
+        }
+        .desktop-header button.active {
+          background: rgba(249, 115, 22, 0.14);
+          color: #f8fafc;
+          border-color: rgba(249, 115, 22, 0.34);
+          box-shadow: 0 0 12px rgba(249,115,22,0.12);
+        }
         .headline { pointer-events: auto; background: linear-gradient(180deg, rgba(9,14,31,0.84), rgba(9,14,31,0.48)); border: 1px solid var(--border); border-radius: 18px; padding: 18px 20px; box-shadow: 0 14px 42px rgba(0,0,0,0.24); }
         .drawer-launch { margin-top: 12px; display: flex; gap: 10px; align-items: center; pointer-events: auto; }
         .drawer-toggle, .drawer-close {
@@ -380,7 +427,81 @@ class HermesHACloudPanel extends HTMLElement {
         .minimap-wrap { right: 18px; bottom: 18px; z-index: 4; }
         canvas#minimap { width: 180px; height: 180px; display: block; border-radius: 18px; background: radial-gradient(circle at 50% 50%, rgba(21, 31, 58, 0.85), rgba(6, 10, 23, 0.96)); border: 1px solid rgba(146, 186, 255, 0.12); box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28); }
         .minimap-copy { margin-top: 8px; text-align: center; font-size: 11px; color: #90a5d6; }
-        aside { overflow: auto; padding: 14px; display: grid; gap: 12px; background: linear-gradient(180deg, rgba(5,9,20,0.9), rgba(4,7,16,0.96)); }
+        aside {
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          background: rgba(2, 6, 23, 0.4);
+          backdrop-filter: blur(16px);
+          border-right: 1px solid rgba(148, 163, 184, 0.12);
+          padding: 0;
+          gap: 0;
+        }
+        .sidebar-brand {
+          height: 64px;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: center;
+          padding: 0 20px;
+          border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+        }
+        .sidebar-brand .sidebar-title {
+          font-size: 21px;
+          font-weight: 800;
+          letter-spacing: -0.02em;
+          color: #f8fafc;
+        }
+        .sidebar-brand .sidebar-subtitle {
+          font-size: 10px;
+          font-weight: 600;
+          color: #94a3b8;
+          text-transform: uppercase;
+          letter-spacing: 0.1em;
+          margin-top: -2px;
+        }
+        .sidebar-tabs-desktop {
+          display: flex;
+          padding: 8px;
+          gap: 4px;
+          background: rgba(0,0,0,0.18);
+          border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+        }
+        .sidebar-tabs-desktop button {
+          flex: 1;
+          border: 0;
+          background: transparent;
+          color: #94a3b8;
+          padding: 8px;
+          border-radius: 8px;
+          cursor: pointer;
+          font: inherit;
+          font-size: 11px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+        .sidebar-tabs-desktop button.active {
+          background: rgba(8, 13, 26, 0.8);
+          color: #f8fafc;
+          box-shadow: 0 0 12px rgba(125,215,255,0.08);
+        }
+        .sidebar-body {
+          flex: 1;
+          overflow: auto;
+          display: grid;
+          gap: 10px;
+          padding: 12px;
+        }
+        .sidebar-footer {
+          padding: 10px 14px 14px;
+          border-top: 1px solid rgba(148, 163, 184, 0.08);
+          color: #94a3b8;
+          font-size: 11px;
+        }
+        aside[data-sidebar-view="legend"] .card[data-panel] { display: none; }
+        aside[data-sidebar-view="legend"] .sidebar-legend-card { display: block; }
+        aside[data-sidebar-view="panels"] .sidebar-legend-card { display: none; }
         aside[data-window-preset="overview"] .card[data-panel] { display: block; }
         aside[data-window-preset="relations"] .card[data-panel]:not([data-panel="relations"]) { display: none; }
         aside[data-window-preset="focus"] .card[data-panel]:not([data-panel="focus"]) { display: none; }
@@ -544,10 +665,19 @@ class HermesHACloudPanel extends HTMLElement {
           .minimap-copy {
             font-size: 10px;
           }
+          .desktop-header,
+          .sidebar-brand,
+          .sidebar-tabs-desktop,
+          .sidebar-footer {
+            display: none;
+          }
           aside {
+            background: linear-gradient(180deg, rgba(4,7,16,0.55), rgba(4,7,16,0.92));
+            border-right: 0;
+          }
+          .sidebar-body {
             padding: 8px 10px 12px;
             gap: 8px;
-            background: linear-gradient(180deg, rgba(4,7,16,0.55), rgba(4,7,16,0.92));
           }
           .mobile-tabs {
             position: sticky;
@@ -560,6 +690,8 @@ class HermesHACloudPanel extends HTMLElement {
             backdrop-filter: blur(10px);
           }
           .scene-wrap[data-mobile-mode="cloud"] .hud {
+            inset: 8px auto auto 8px;
+            width: calc(100% - 16px);
             margin-top: 6px;
             transition: opacity 180ms ease, transform 180ms ease;
           }
@@ -621,7 +753,7 @@ class HermesHACloudPanel extends HTMLElement {
           }
         }
         @media (max-width: 480px) {
-          .hud { margin: 8px; }
+          .hud { inset: 8px auto auto 8px; width: calc(100% - 16px); margin: 0; }
           .headline { padding: 12px; }
           h1 { font-size: 20px; }
           .sub { font-size: 12px; }
@@ -640,6 +772,66 @@ class HermesHACloudPanel extends HTMLElement {
         }
       </style>
       <div class="layout">
+        <aside data-sidebar-view="${this.sidebarView}">
+          <div class="sidebar-brand">
+            <div class="sidebar-title">Hermes HA Cloud</div>
+            <div class="sidebar-subtitle">home assistant observatory</div>
+          </div>
+          <div class="sidebar-tabs-desktop" id="sidebartabs">
+            <button type="button" data-sidebar-view="panels">Panels</button>
+            <button type="button" data-sidebar-view="legend">Node Types</button>
+          </div>
+          <div class="sidebar-body">
+            <div class="mobile-tabs" id="mobiletabs">
+              <button type="button" data-tab="cloud">Moln</button>
+              <button type="button" data-tab="snapshot">Snapshot</button>
+              <button type="button" data-tab="relations">Kopplingar</button>
+              <button type="button" data-tab="focus">Fokus</button>
+              <button type="button" data-tab="problem">Problem</button>
+            </div>
+            <div class="card" data-panel="snapshot">
+              <h2>Live snapshot</h2>
+              <div class="stats" id="stats"></div>
+            </div>
+            <div class="card" id="details" data-panel="snapshot"></div>
+            <div class="card" data-panel="relations">
+              <h3>Kopplingar</h3>
+              <div class="microcopy">Direkta relationer till vald nod: vilka saker den tillhör, styr, påverkar eller ligger i samma area som.</div>
+              <div class="relations" id="relations"></div>
+            </div>
+            <div class="card" data-panel="focus">
+              <h3>Focus lane</h3>
+              <div class="microcopy">Viktigaste synliga noderna just nu. Problem och unavailable får extra vikt.</div>
+              <div class="focus-grid" id="focuslist"></div>
+            </div>
+            <div class="card" data-panel="focus">
+              <h3>Fokusvägar</h3>
+              <div class="microcopy">Klickbara kedjor mellan rum, enhet, entitet och automation/scen för vald nod.</div>
+              <div class="focus-paths" id="focuspaths"></div>
+            </div>
+            <div class="card" data-panel="problem">
+              <h3>Problem-enheter</h3>
+              <div class="microcopy">Enheter med unavailable- eller unknown-tyngd. Klicka för att följa kopplingarna.</div>
+              <div class="list" id="problemlist"></div>
+            </div>
+            <div class="card sidebar-legend-card">
+              <h3>Node types</h3>
+              <div class="microcopy">ArcRift-inspirerad legendvy för att snabbt förstå lagren i HA-kartan.</div>
+              <div class="legend">
+                <span>Add-ons</span>
+                <span>Integrationer</span>
+                <span>Areas</span>
+                <span>Enheter</span>
+                <span>Entiteter</span>
+                <span>Automationer</span>
+                <span>Scener</span>
+                <span>Personer</span>
+                <span class="critical">Unavailable / problem</span>
+              </div>
+            </div>
+          </div>
+          <div class="sidebar-footer">Local-first HA-graf med ArcRift-inspirerad uppställning, menyer och glassmorphism-krom.</div>
+        </aside>
         <div class="scene-wrap">
           <div id="scene"></div>
           <div class="grid-glow"></div>
@@ -711,6 +903,21 @@ class HermesHACloudPanel extends HTMLElement {
           <div class="vignette"></div>
           <div class="cinema-bar top"></div>
           <div class="cinema-bar bottom"></div>
+          <div class="desktop-header">
+            <div class="desktop-header-left">
+              <button type="button" data-window-target="drawer">Load Session</button>
+            </div>
+            <div class="desktop-header-center" id="desktop-header-tabs">
+              <button type="button" data-window-target="overview">Knowledge Graph</button>
+              <button type="button" data-window-target="snapshot">Snapshot</button>
+              <button type="button" data-window-target="relations">Facts</button>
+              <button type="button" data-window-target="focus">Chat</button>
+              <button type="button" data-window-target="problem">Problems</button>
+            </div>
+            <div class="desktop-header-right">
+              <button type="button" data-window-target="drawer">Settings</button>
+            </div>
+          </div>
           <div class="hud">
             <div class="headline">
               <div class="eyebrow">Home Assistant / topology observatory</div>
@@ -732,40 +939,6 @@ class HermesHACloudPanel extends HTMLElement {
             <div class="minimap-copy">Layer map / live focus radar</div>
           </div>
         </div>
-        <aside>
-          <div class="mobile-tabs" id="mobiletabs">
-            <button type="button" data-tab="cloud">Moln</button>
-            <button type="button" data-tab="snapshot">Snapshot</button>
-            <button type="button" data-tab="relations">Kopplingar</button>
-            <button type="button" data-tab="focus">Fokus</button>
-            <button type="button" data-tab="problem">Problem</button>
-          </div>
-          <div class="card" data-panel="snapshot">
-            <h2>Live snapshot</h2>
-            <div class="stats" id="stats"></div>
-          </div>
-          <div class="card" id="details" data-panel="snapshot"></div>
-          <div class="card" data-panel="relations">
-            <h3>Kopplingar</h3>
-            <div class="microcopy">Direkta relationer till vald nod: vilka saker den tillhör, styr, påverkar eller ligger i samma area som.</div>
-            <div class="relations" id="relations"></div>
-          </div>
-          <div class="card" data-panel="focus">
-            <h3>Focus lane</h3>
-            <div class="microcopy">Viktigaste synliga noderna just nu. Problem och unavailable får extra vikt.</div>
-            <div class="focus-grid" id="focuslist"></div>
-          </div>
-          <div class="card" data-panel="focus">
-            <h3>Fokusvägar</h3>
-            <div class="microcopy">Klickbara kedjor mellan rum, enhet, entitet och automation/scen för vald nod.</div>
-            <div class="focus-paths" id="focuspaths"></div>
-          </div>
-          <div class="card" data-panel="problem">
-            <h3>Problem-enheter</h3>
-            <div class="microcopy">Enheter med unavailable- eller unknown-tyngd. Klicka för att följa kopplingarna.</div>
-            <div class="list" id="problemlist"></div>
-          </div>
-        </aside>
       </div>
     `;
   }
@@ -1291,6 +1464,30 @@ class HermesHACloudPanel extends HTMLElement {
         this.updateMobileUI();
       });
     });
+    this.desktopHeaderTabsEl?.querySelectorAll('button[data-window-target]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const target = button.dataset.windowTarget;
+        if (target === 'drawer') {
+          this.drawerOpen = true;
+          this.updateDrawerUI();
+          this.updateMobileUI();
+          this.savePreferences();
+          return;
+        }
+        this.windowPreset = target || 'overview';
+        this.updateWindowPreset();
+        this.updateMobileUI();
+        this.updateControlPills();
+        this.savePreferences();
+      });
+    });
+    this.sidebarTabsDesktopEl?.querySelectorAll('button[data-sidebar-view]').forEach((button) => {
+      button.addEventListener('click', () => {
+        this.sidebarView = button.dataset.sidebarView || 'panels';
+        this.updateDesktopArcUI();
+        this.savePreferences();
+      });
+    });
     this.mobileTabsEl?.querySelectorAll('button[data-tab]').forEach((button) => {
       button.addEventListener('click', () => {
         this.mobileTab = button.dataset.tab || 'cloud';
@@ -1320,6 +1517,18 @@ class HermesHACloudPanel extends HTMLElement {
     if (this.mobileControlsBodyEl) this.mobileControlsBodyEl.classList.toggle('collapsed', !open);
   }
 
+  updateDesktopArcUI() {
+    this.panelAsideEl?.setAttribute('data-sidebar-view', this.sidebarView || 'panels');
+    this.sidebarTabsDesktopEl?.querySelectorAll('button[data-sidebar-view]').forEach((button) => {
+      button.classList.toggle('active', button.dataset.sidebarView === this.sidebarView);
+    });
+    this.desktopHeaderTabsEl?.querySelectorAll('button[data-window-target]').forEach((button) => {
+      const target = button.dataset.windowTarget;
+      const active = target === 'drawer' ? this.drawerOpen : target === (this.windowPreset || 'overview');
+      button.classList.toggle('active', !!active);
+    });
+  }
+
   updateMobileUI() {
     const mobile = this.isMobileLayout();
     const controlsBtn = this.mobileControlsToggleEl;
@@ -1328,6 +1537,7 @@ class HermesHACloudPanel extends HTMLElement {
     const aside = tabs?.parentElement;
     const isCloudMode = mobile && this.mobileTab === 'cloud';
     this.updateDrawerUI();
+    this.updateDesktopArcUI();
     this.sceneWrapEl?.setAttribute('data-mobile-mode', isCloudMode ? 'cloud' : 'panel');
     this.sceneWrapEl?.setAttribute('data-mobile-chrome', this.mobileChromeHidden && isCloudMode ? 'hidden' : 'visible');
     this.mobileCloudActionsEl?.classList.toggle('active-cloud', isCloudMode);
