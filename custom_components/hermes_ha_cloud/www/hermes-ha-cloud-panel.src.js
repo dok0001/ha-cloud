@@ -31,7 +31,8 @@ class HermesHACloudPanel extends HTMLElement {
     this.pointer = new THREE.Vector2();
     this.raycaster = new THREE.Raycaster();
     const params = new URLSearchParams(window.location.search);
-    this.renderEngine = params.get('ha_cloud_renderer') === 'babylon' ? 'babylon' : 'three';
+    this.renderEngineOverride = params.get('ha_cloud_renderer');
+    this.renderEngine = this.renderEngineOverride === 'babylon' ? 'babylon' : 'three';
     this.babylon = null;
     this.nodeObjects = [];
     this.nodeMap = new Map();
@@ -84,6 +85,7 @@ class HermesHACloudPanel extends HTMLElement {
     this.effectsEl = this.shadowRoot.getElementById('effects');
     this.windowPresetsEl = this.shadowRoot.getElementById('windowpresets');
     this.presetProfilesEl = this.shadowRoot.getElementById('presetprofiles');
+    this.rendererModesEl = this.shadowRoot.getElementById('renderermodes');
     this.settingsToggleEl = this.shadowRoot.getElementById('settings-toggle');
     this.settingsBodyEl = this.shadowRoot.getElementById('settings-body');
     this.drawerToggleEl = this.shadowRoot.getElementById('drawer-toggle');
@@ -185,6 +187,7 @@ class HermesHACloudPanel extends HTMLElement {
       if (!['rooms', 'devices', 'problems', 'types'].includes(this.sidebarView)) this.sidebarView = 'rooms';
       if (prefs.focusFilterMode) this.focusFilterMode = prefs.focusFilterMode;
       if (prefs.effects && typeof prefs.effects === 'object') this.effects = { ...this.effects, ...prefs.effects };
+      if (!this.renderEngineOverride && ['three', 'babylon'].includes(prefs.renderEngine)) this.renderEngine = prefs.renderEngine;
       this.autoDrift = this.motionMode === 'live' ? 0.0001 : this.motionMode === 'still' ? 0 : 0.00004;
     } catch {}
   }
@@ -196,6 +199,7 @@ class HermesHACloudPanel extends HTMLElement {
         labelMode: this.labelMode,
         motionMode: this.motionMode,
         effects: this.effects,
+        renderEngine: this.renderEngine,
         windowPreset: this.windowPreset,
         presetProfile: this.presetProfile,
         settingsCollapsed: this.settingsCollapsed,
@@ -1060,6 +1064,10 @@ class HermesHACloudPanel extends HTMLElement {
                 <div class="settings-body" id="settings-body">
                   <div class="control-stack controls-extended">
                     <div class="control-section">
+                      <div class="control-section-title">Renderer</div>
+                      <div class="control-group control-pills" id="renderermodes"></div>
+                    </div>
+                    <div class="control-section">
                       <div class="control-section-title">Profil</div>
                       <div class="control-group control-pills" id="presetprofiles"></div>
                     </div>
@@ -1162,6 +1170,27 @@ class HermesHACloudPanel extends HTMLElement {
 
   getActiveCanvas() {
     return this.renderEngine === 'babylon' ? this.babylon?.canvas : this.renderer?.domElement;
+  }
+
+  switchRenderEngine(value) {
+    if (!['three', 'babylon'].includes(value) || value === this.renderEngine) return;
+    this.renderEngine = value;
+    this.hoveredNode = null;
+    this.disposeRenderer();
+    this.initRenderer();
+    this.installSurfaceEvents();
+    if (this.data) {
+      this.rebuildScene();
+      this.applyVisibility();
+      this.applyEffects();
+      this.updateSidePanel();
+      this.updateSidebarSections();
+      this.updateFocusLane();
+      this.drawMiniMap();
+    }
+    this.resize();
+    this.updateControlPills();
+    this.savePreferences();
   }
 
   initBabylon() {
@@ -1847,21 +1876,28 @@ class HermesHACloudPanel extends HTMLElement {
     return el;
   }
 
-  installEvents() {
+  installSurfaceEvents() {
     const surface = this.getActiveCanvas();
     if (this.renderEngine === 'babylon') {
       surface?.addEventListener('pointermove', (ev) => this.onBabylonPointerMove(ev));
       surface?.addEventListener('pointerleave', () => { this.hoveredNode = null; this.updateSidePanel(); });
       surface?.addEventListener('click', (ev) => this.onBabylonClick(ev));
-    } else {
-      this.renderer.domElement.addEventListener('pointermove', (ev) => this.onPointerMove(ev));
-      this.renderer.domElement.addEventListener('pointerleave', () => { this.hoveredNode = null; this.updateSidePanel(); });
-      this.renderer.domElement.addEventListener('click', () => {
-        this.nudgeMobileChrome();
-        if (this.hoveredNode?.id) this.selectNodeById(this.hoveredNode.id);
-        else { this.selectedNode = { title: this.data?.core?.title || 'Hermes HA Cloud', type: 'core', layer: 'core', text: this.data?.core?.text || '' }; this.updateSidePanel(); }
-      });
+      return;
     }
+    this.renderer?.domElement?.addEventListener('pointermove', (ev) => this.onPointerMove(ev));
+    this.renderer?.domElement?.addEventListener('pointerleave', () => { this.hoveredNode = null; this.updateSidePanel(); });
+    this.renderer?.domElement?.addEventListener('click', () => {
+      this.nudgeMobileChrome();
+      if (this.hoveredNode?.id) this.selectNodeById(this.hoveredNode.id);
+      else {
+        this.selectedNode = { title: this.data?.core?.title || 'Hermes HA Cloud', type: 'core', layer: 'core', text: this.data?.core?.text || '' };
+        this.updateSidePanel();
+      }
+    });
+  }
+
+  installEvents() {
+    this.installSurfaceEvents();
     this.searchEl?.addEventListener('input', (ev) => {
       this.searchQuery = String(ev.target.value || '').trim().toLowerCase();
       this.applyVisibility();
@@ -2158,6 +2194,7 @@ class HermesHACloudPanel extends HTMLElement {
     build(this.viewModeEl, this.viewMode, [['constellation', '🌌 Constellation'], ['timeline', '🧭 Timeline']], (value) => { this.viewMode = value; this.updateControlPills(); this.drawMiniMap(); this.savePreferences(); });
     build(this.labelModeEl, this.labelMode, [['minimal', '🔤 Minimal'], ['normal', '📝 Normal'], ['detailed', '📚 Detailed']], (value) => { this.labelMode = value; this.updateControlPills(); this.updateFocusLane(); this.savePreferences(); });
     build(this.motionModeEl, this.motionMode, [['calm', '🌫 Calm'], ['live', '⚡ Live'], ['still', '⏸ Still']], (value) => { this.motionMode = value; this.autoDrift = value === 'live' ? 0.0001 : value === 'still' ? 0 : 0.00004; this.updateControlPills(); this.savePreferences(); });
+    build(this.rendererModesEl, this.renderEngine, [['three', '🧊 Three.js'], ['babylon', '💡 Babylon']], (value) => this.switchRenderEngine(value));
     build(this.presetProfilesEl, this.presetProfile, [['clean', '🧼 Clean HA'], ['galaxy', '🌌 Galaxy'], ['debug', '🛠 Debug'], ['problems', '🚨 Problems']], (value) => this.applyPresetProfile(value));
     build(this.effectsEl, this.effects, [['orbitRings', '🪐 Orbitbanor'], ['nebulas', '☁️ Nebulosor'], ['relationTraffic', '🔗 Länktrafik'], ['autoZoom', '🎯 Auto-zoom'], ['cinematicGlow', '✨ Glow']], (value) => {
       this.effects[value] = !this.effects[value];
@@ -2223,6 +2260,7 @@ class HermesHACloudPanel extends HTMLElement {
         mesh.setEnabled?.(visible);
         mesh.visibility = visible ? 1 : 0;
         if (mesh.userData?.shell) mesh.userData.shell.isVisible = visible && !!this.effects.cinematicGlow;
+        if (mesh.userData?.aura) mesh.userData.aura.isVisible = visible && !!this.effects.cinematicGlow;
       }
       const label = this.labelEls.get(node.id);
       if (label) label.style.opacity = '0';
