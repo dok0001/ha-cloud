@@ -747,6 +747,7 @@ class HermesHACloudPanel extends HTMLElement {
     this.nodeMap = new Map();
     this.labelEls = new Map();
     this.labelsEl.innerHTML = '';
+    this.orbitRingObjects = [];
 
     Object.entries(this.layerConfigs).forEach(([layer, cfg]) => {
       const zone = new THREE.Mesh(new THREE.SphereGeometry(Math.max(cfg.spread.x, cfg.spread.y, cfg.spread.z) * 0.54, 32, 32), new THREE.MeshBasicMaterial({ color: cfg.color, transparent: true, opacity: layer === 'problem' ? 0.08 : 0.04 }));
@@ -762,35 +763,61 @@ class HermesHACloudPanel extends HTMLElement {
     const sphereGeo = new THREE.SphereGeometry(1, 20, 20);
     for (const node of this.nodes) {
       const color = this.colorFor(node);
-      const shellMaterial = new THREE.MeshPhysicalMaterial({ color, emissive: color, emissiveIntensity: node.severity === 'critical' ? 1.2 : 0.75, roughness: 0.34, metalness: 0.04, transparent: true, opacity: Math.min(0.98, node.alpha) });
+      const shellMaterial = new THREE.MeshPhysicalMaterial({ color, emissive: color, emissiveIntensity: node.layer === 'area' ? 1.15 : (node.severity === 'critical' ? 1.2 : 0.75), roughness: 0.34, metalness: 0.04, transparent: true, opacity: Math.min(0.98, node.alpha) });
       const mesh = new THREE.Mesh(sphereGeo.clone(), shellMaterial);
       mesh.position.copy(node.position);
       mesh.scale.setScalar(node.size);
       mesh.userData.node = node;
-      const halo = new THREE.Mesh(new THREE.SphereGeometry(1.2, 18, 18), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: node.severity === 'critical' ? 0.22 : 0.08 }));
-      halo.scale.setScalar(node.size * (node.severity === 'critical' ? 2.05 : 1.72));
+      const halo = new THREE.Mesh(new THREE.SphereGeometry(1.2, 18, 18), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: node.layer === 'area' ? 0.18 : (node.severity === 'critical' ? 0.22 : 0.08) }));
+      halo.scale.setScalar(node.size * (node.layer === 'area' ? 2.6 : (node.severity === 'critical' ? 2.05 : 1.72)));
       mesh.add(halo);
       mesh.userData.halo = halo;
+      if (node.layer === 'area') {
+        const starGlow = new THREE.Mesh(new THREE.SphereGeometry(1.45, 20, 20), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.14 }));
+        starGlow.scale.setScalar(node.size * 4.4);
+        mesh.add(starGlow);
+        mesh.userData.starGlow = starGlow;
+      }
       this.graphRoot.add(mesh);
       this.nodeObjects.push(mesh);
       this.nodeMap.set(node.id, mesh);
       this.labelsEl.appendChild(this.createLabelElement(node));
     }
 
+    for (const node of this.nodes) {
+      if (!node.orbitParentId || !node.orbitRadius) continue;
+      const parentMesh = this.nodeMap.get(node.orbitParentId);
+      if (!parentMesh) continue;
+      const orbitRing = new THREE.Mesh(
+        new THREE.TorusGeometry(node.orbitRadius, Math.max(0.06, node.layer === 'entity' ? 0.08 : 0.11), 10, 96),
+        new THREE.MeshBasicMaterial({ color: this.colorFor(node), transparent: true, opacity: node.layer === 'entity' ? 0.12 : 0.18 })
+      );
+      orbitRing.position.copy(parentMesh.position);
+      orbitRing.rotation.x = Math.PI / 2 + node.orbitTilt;
+      orbitRing.rotation.z = node.orbitTilt * 0.65;
+      orbitRing.userData.nodeId = node.id;
+      orbitRing.userData.parentId = node.orbitParentId;
+      this.clusterRoot.add(orbitRing);
+      this.orbitRingObjects.push(orbitRing);
+    }
+
     const pairs = [];
     const positions = [];
+    const colors = [];
     for (const link of this.linkDefs) {
       const a = this.nodeMap.get(link.source);
       const b = this.nodeMap.get(link.target);
       if (!a || !b) continue;
       pairs.push({ a, b, relation: link.relation, weight: link.weight || 1, key: `${link.source}|${link.target}|${link.relation}` });
       positions.push(a.position.x, a.position.y, a.position.z, b.position.x, b.position.y, b.position.z);
+      colors.push(0.525, 0.761, 1.0, 0.525, 0.761, 1.0);
     }
     this.linkPairs = pairs;
     if (positions.length) {
       const lineGeo = new THREE.BufferGeometry();
       lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-      this.lines = new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({ color: 0x86c2ff, transparent: true, opacity: 0.18 }));
+      lineGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+      this.lines = new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.18 }));
       this.graphRoot.add(this.lines);
       this.updatePulseGeometry();
     } else {
@@ -987,6 +1014,29 @@ class HermesHACloudPanel extends HTMLElement {
 
   getNodeById(id) {
     return this.nodeMap.get(id)?.userData?.node || null;
+  }
+
+  getLineageIds(node) {
+    if (!node?.id) return new Set();
+    const ids = new Set([node.id]);
+    let cursor = node;
+    const guard = new Set();
+    while (cursor?.orbitParentId && !guard.has(cursor.id)) {
+      guard.add(cursor.id);
+      ids.add(cursor.orbitParentId);
+      cursor = this.getNodeById(cursor.orbitParentId);
+    }
+    const queue = [node.id];
+    while (queue.length) {
+      const parentId = queue.shift();
+      this.nodes.forEach((candidate) => {
+        if (candidate.orbitParentId === parentId && !ids.has(candidate.id)) {
+          ids.add(candidate.id);
+          queue.push(candidate.id);
+        }
+      });
+    }
+    return ids;
   }
 
   buildHierarchyPaths(node) {
@@ -1241,6 +1291,8 @@ class HermesHACloudPanel extends HTMLElement {
     this.lastTime = time;
     const t = time * 0.001;
     const motionFactor = this.motionMode === 'live' ? 1.9 : this.motionMode === 'still' ? 0 : 1;
+    const focusNode = this.selectedNode || this.hoveredNode;
+    const lineageIds = this.getLineageIds(focusNode);
     this.graphRoot.rotation.y += this.autoDrift * dt;
     this.coreGlow.scale.setScalar(1 + Math.sin(t * 1.2) * 0.06);
     this.coreShell.rotation.y -= this.autoDrift * dt * 3;
@@ -1276,12 +1328,23 @@ class HermesHACloudPanel extends HTMLElement {
       mesh.position.copy(node.position);
       livePositionById.set(node.id, mesh.position.clone());
       const active = this.hoveredNode?.id === node.id || this.selectedNode?.id === node.id;
-      const scale = active ? node.size * 1.18 : node.size;
+      const inLineage = lineageIds.has(node.id);
+      const scale = active ? node.size * 1.22 : inLineage ? node.size * 1.08 : node.size;
       mesh.scale.lerp(new THREE.Vector3(scale, scale, scale), 0.18);
-      mesh.material.emissiveIntensity = active ? 1.4 : node.severity === 'critical' ? 1.18 : 0.72;
-      mesh.material.opacity = active ? 1 : Math.min(0.98, node.alpha);
-      if (mesh.userData.halo) mesh.userData.halo.material.opacity = active ? 0.2 : (node.severity === 'critical' ? 0.18 : 0.08);
+      mesh.material.emissiveIntensity = active ? 1.55 : inLineage ? 1.15 : node.layer === 'area' ? 1.15 : node.severity === 'critical' ? 1.18 : 0.72;
+      mesh.material.opacity = active ? 1 : inLineage ? Math.min(0.99, node.alpha + 0.12) : Math.min(0.98, node.alpha);
+      if (mesh.userData.halo) mesh.userData.halo.material.opacity = active ? 0.24 : inLineage ? 0.16 : (node.layer === 'area' ? 0.18 : (node.severity === 'critical' ? 0.18 : 0.08));
+      if (mesh.userData.starGlow) mesh.userData.starGlow.material.opacity = active ? 0.24 : inLineage ? 0.18 : 0.14;
     }
+
+    this.orbitRingObjects?.forEach((ring) => {
+      const parentMesh = this.nodeMap.get(ring.userData.parentId);
+      const nodeId = ring.userData.nodeId;
+      if (parentMesh) ring.position.copy(parentMesh.position);
+      const active = nodeId && lineageIds.has(nodeId);
+      ring.material.opacity = active ? 0.34 : 0.12;
+      ring.scale.setScalar(active ? 1.03 : 1);
+    });
 
     const focusMesh = this.nodeMap.get(this.selectedNode?.id || this.hoveredNode?.id);
     if (focusMesh) {
@@ -1295,11 +1358,18 @@ class HermesHACloudPanel extends HTMLElement {
 
     if (this.lines?.geometry && this.linkPairs?.length) {
       const pos = this.lines.geometry.attributes.position.array;
+      const colorAttr = this.lines.geometry.attributes.color.array;
       let k = 0;
+      let c = 0;
       this.linkPairs.forEach(({ a, b }, idx) => {
-        const active = this.selectedNode?.id && (a.userData.node.id === this.selectedNode.id || b.userData.node.id === this.selectedNode.id);
+        const aId = a.userData.node.id;
+        const bId = b.userData.node.id;
+        const active = lineageIds.size && lineageIds.has(aId) && lineageIds.has(bId);
         pos[k++] = a.position.x; pos[k++] = a.position.y; pos[k++] = a.position.z;
         pos[k++] = b.position.x; pos[k++] = b.position.y; pos[k++] = b.position.z;
+        const color = active ? [0.95, 0.96, 1.0] : [0.525, 0.761, 1.0];
+        colorAttr[c++] = color[0]; colorAttr[c++] = color[1]; colorAttr[c++] = color[2];
+        colorAttr[c++] = color[0]; colorAttr[c++] = color[1]; colorAttr[c++] = color[2];
         if (positions && idx < this.pulseCount) {
           this.pulseProgress[idx] = (this.pulseProgress[idx] + dt * 0.00035 * this.pulseSpeeds[idx]) % 1;
           const p = this.pulseProgress[idx];
@@ -1307,11 +1377,11 @@ class HermesHACloudPanel extends HTMLElement {
           positions[idx * 3 + 1] = a.position.y + (b.position.y - a.position.y) * p;
           positions[idx * 3 + 2] = a.position.z + (b.position.z - a.position.z) * p;
         }
-        if (active && this.lines.material) this.lines.material.opacity = 0.38;
       });
+      this.lines.material.opacity = lineageIds.size ? 0.32 : 0.18;
       this.lines.geometry.attributes.position.needsUpdate = true;
+      this.lines.geometry.attributes.color.needsUpdate = true;
       if (this.pulsePoints.geometry.attributes.position) this.pulsePoints.geometry.attributes.position.needsUpdate = true;
-      if (!this.selectedNode && this.lines.material) this.lines.material.opacity = 0.18;
     }
 
     this.updateLabelAnchors();
