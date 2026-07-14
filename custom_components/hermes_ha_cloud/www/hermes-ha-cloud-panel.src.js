@@ -14,6 +14,8 @@ class HermesHACloudPanel extends HTMLElement {
     this.motionMode = 'calm';
     this.effects = { orbitRings: true, nebulas: true, relationTraffic: true, autoZoom: true, cinematicGlow: true };
     this.windowPreset = 'overview';
+    this.presetProfile = 'galaxy';
+    this.settingsCollapsed = false;
     this.mobileControlsCollapsed = false;
     this.mobileMiniMapVisible = false;
     this.mobileTab = 'snapshot';
@@ -28,6 +30,7 @@ class HermesHACloudPanel extends HTMLElement {
     this.lastTime = performance.now();
     this.autoDrift = 0.00004;
     this.layerConfigs = this.createLayerConfigs();
+    this.loadPreferences();
     this.render();
   }
 
@@ -63,6 +66,9 @@ class HermesHACloudPanel extends HTMLElement {
     this.viewModeEl = this.shadowRoot.getElementById('viewmodes');
     this.effectsEl = this.shadowRoot.getElementById('effects');
     this.windowPresetsEl = this.shadowRoot.getElementById('windowpresets');
+    this.presetProfilesEl = this.shadowRoot.getElementById('presetprofiles');
+    this.settingsToggleEl = this.shadowRoot.getElementById('settings-toggle');
+    this.settingsBodyEl = this.shadowRoot.getElementById('settings-body');
     this.panelAsideEl = this.shadowRoot.querySelector('aside');
     this.miniMapEl = this.shadowRoot.getElementById('minimap');
     this.miniMapCtx = this.miniMapEl?.getContext('2d');
@@ -90,6 +96,36 @@ class HermesHACloudPanel extends HTMLElement {
       .replaceAll('>', '&gt;')
       .replaceAll('"', '&quot;')
       .replaceAll("'", '&#39;');
+  }
+
+  loadPreferences() {
+    try {
+      const raw = window.localStorage?.getItem('hermes-ha-cloud-ui');
+      if (!raw) return;
+      const prefs = JSON.parse(raw);
+      if (prefs.viewMode) this.viewMode = prefs.viewMode;
+      if (prefs.labelMode) this.labelMode = prefs.labelMode;
+      if (prefs.motionMode) this.motionMode = prefs.motionMode;
+      if (prefs.windowPreset) this.windowPreset = prefs.windowPreset;
+      if (prefs.presetProfile) this.presetProfile = prefs.presetProfile;
+      if (typeof prefs.settingsCollapsed === 'boolean') this.settingsCollapsed = prefs.settingsCollapsed;
+      if (prefs.effects && typeof prefs.effects === 'object') this.effects = { ...this.effects, ...prefs.effects };
+      this.autoDrift = this.motionMode === 'live' ? 0.0001 : this.motionMode === 'still' ? 0 : 0.00004;
+    } catch {}
+  }
+
+  savePreferences() {
+    try {
+      window.localStorage?.setItem('hermes-ha-cloud-ui', JSON.stringify({
+        viewMode: this.viewMode,
+        labelMode: this.labelMode,
+        motionMode: this.motionMode,
+        effects: this.effects,
+        windowPreset: this.windowPreset,
+        presetProfile: this.presetProfile,
+        settingsCollapsed: this.settingsCollapsed,
+      }));
+    } catch {}
   }
 
   createLayerConfigs() {
@@ -192,6 +228,14 @@ class HermesHACloudPanel extends HTMLElement {
         .search input::placeholder { color: #8294bf; }
         .control-group { display: flex; gap: 8px; flex-wrap: wrap; }
         .control-stack { display: grid; gap: 10px; margin-top: 12px; }
+        .settings-shell { margin-top: 12px; border: 1px solid rgba(140, 180, 255, 0.12); border-radius: 16px; background: rgba(7, 12, 24, 0.44); overflow: hidden; }
+        .settings-toggle { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 0; background: rgba(11, 18, 34, 0.82); color: #eef4ff; cursor: pointer; font: inherit; text-align: left; }
+        .settings-toggle strong { font-size: 13px; }
+        .settings-toggle small { color: #94aad6; }
+        .settings-toggle .chev { transition: transform 140ms ease; }
+        .settings-shell.collapsed .settings-toggle .chev { transform: rotate(-90deg); }
+        .settings-body { padding: 12px 14px 14px; }
+        .settings-shell.collapsed .settings-body { display: none; }
         .control-section { display: grid; gap: 8px; }
         .control-section-title { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #8eaee6; }
         .control-pills button, .filters button, .row, .focus-row, .relation-btn {
@@ -418,14 +462,29 @@ class HermesHACloudPanel extends HTMLElement {
                 <div class="control-group control-pills" id="labelmodes"></div>
                 <div class="control-group control-pills" id="motionmodes"></div>
               </div>
-              <div class="control-stack controls-extended">
-                <div class="control-section">
-                  <div class="control-section-title">Effekter</div>
-                  <div class="control-group control-pills" id="effects"></div>
-                </div>
-                <div class="control-section">
-                  <div class="control-section-title">Fönster</div>
-                  <div class="control-group control-pills" id="windowpresets"></div>
+              <div class="settings-shell${this.settingsCollapsed ? ' collapsed' : ''}" id="settings-shell">
+                <button class="settings-toggle" id="settings-toggle" type="button">
+                  <span>
+                    <strong>⚙️ Inställningar & presets</strong><br />
+                    <small>Effekter, profiler och fönster för panelen</small>
+                  </span>
+                  <span class="chev">▾</span>
+                </button>
+                <div class="settings-body" id="settings-body">
+                  <div class="control-stack controls-extended">
+                    <div class="control-section">
+                      <div class="control-section-title">Profil</div>
+                      <div class="control-group control-pills" id="presetprofiles"></div>
+                    </div>
+                    <div class="control-section">
+                      <div class="control-section-title">Effekter</div>
+                      <div class="control-group control-pills" id="effects"></div>
+                    </div>
+                    <div class="control-section">
+                      <div class="control-section-title">Fönster</div>
+                      <div class="control-group control-pills" id="windowpresets"></div>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div class="filters" id="filters"></div>
@@ -929,6 +988,12 @@ class HermesHACloudPanel extends HTMLElement {
       this.mobileControlsCollapsed = !this.mobileControlsCollapsed;
       this.updateMobileUI();
     });
+    this.settingsToggleEl?.addEventListener('click', () => {
+      this.settingsCollapsed = !this.settingsCollapsed;
+      const shell = this.shadowRoot.getElementById('settings-shell');
+      if (shell) shell.classList.toggle('collapsed', this.settingsCollapsed);
+      this.savePreferences();
+    });
     this.mobileMiniMapToggleEl?.addEventListener('click', () => {
       this.mobileMiniMapVisible = !this.mobileMiniMapVisible;
       this.updateMobileUI();
@@ -1001,6 +1066,47 @@ class HermesHACloudPanel extends HTMLElement {
     });
   }
 
+  applyPresetProfile(profile) {
+    const presets = {
+      clean: {
+        presetProfile: 'clean',
+        effects: { orbitRings: false, nebulas: false, relationTraffic: false, autoZoom: false, cinematicGlow: false },
+        windowPreset: 'overview', viewMode: 'constellation', motionMode: 'still', labelMode: 'normal'
+      },
+      galaxy: {
+        presetProfile: 'galaxy',
+        effects: { orbitRings: true, nebulas: true, relationTraffic: true, autoZoom: true, cinematicGlow: true },
+        windowPreset: 'overview', viewMode: 'constellation', motionMode: 'calm', labelMode: 'normal'
+      },
+      debug: {
+        presetProfile: 'debug',
+        effects: { orbitRings: true, nebulas: false, relationTraffic: true, autoZoom: false, cinematicGlow: false },
+        windowPreset: 'relations', viewMode: 'timeline', motionMode: 'still', labelMode: 'detailed'
+      },
+      problems: {
+        presetProfile: 'problems',
+        effects: { orbitRings: true, nebulas: false, relationTraffic: true, autoZoom: true, cinematicGlow: true },
+        windowPreset: 'problem', viewMode: 'constellation', motionMode: 'calm', labelMode: 'detailed'
+      },
+    };
+    const preset = presets[profile];
+    if (!preset) return;
+    this.presetProfile = preset.presetProfile;
+    this.effects = { ...this.effects, ...preset.effects };
+    this.windowPreset = preset.windowPreset;
+    this.viewMode = preset.viewMode;
+    this.motionMode = preset.motionMode;
+    this.labelMode = preset.labelMode;
+    this.autoDrift = this.motionMode === 'live' ? 0.0001 : this.motionMode === 'still' ? 0 : 0.00004;
+    this.applyEffects();
+    this.updateWindowPreset();
+    this.updateMobileUI();
+    this.updateControlPills();
+    this.updateFocusLane();
+    this.drawMiniMap();
+    this.savePreferences();
+  }
+
   updateControlPills() {
     const build = (host, active, entries, onPick, multiple = false) => {
       if (!host) return;
@@ -1014,21 +1120,24 @@ class HermesHACloudPanel extends HTMLElement {
         host.appendChild(button);
       });
     };
-    build(this.viewModeEl, this.viewMode, [['constellation', 'Constellation'], ['timeline', 'Timeline']], (value) => { this.viewMode = value; this.updateControlPills(); this.drawMiniMap(); });
-    build(this.labelModeEl, this.labelMode, [['minimal', 'Minimal labels'], ['normal', 'Normal'], ['detailed', 'Detailed']], (value) => { this.labelMode = value; this.updateControlPills(); this.updateFocusLane(); });
-    build(this.motionModeEl, this.motionMode, [['calm', 'Motion calm'], ['live', 'Motion live'], ['still', 'Motion still']], (value) => { this.motionMode = value; this.autoDrift = value === 'live' ? 0.0001 : value === 'still' ? 0 : 0.00004; this.updateControlPills(); });
-    build(this.effectsEl, this.effects, [['orbitRings', 'Orbitbanor'], ['nebulas', 'Nebulosor'], ['relationTraffic', 'Länktrafik'], ['autoZoom', 'Auto-zoom'], ['cinematicGlow', 'Cinematic glow']], (value) => {
+    build(this.viewModeEl, this.viewMode, [['constellation', '🌌 Constellation'], ['timeline', '🧭 Timeline']], (value) => { this.viewMode = value; this.updateControlPills(); this.drawMiniMap(); this.savePreferences(); });
+    build(this.labelModeEl, this.labelMode, [['minimal', '🔤 Minimal'], ['normal', '📝 Normal'], ['detailed', '📚 Detailed']], (value) => { this.labelMode = value; this.updateControlPills(); this.updateFocusLane(); this.savePreferences(); });
+    build(this.motionModeEl, this.motionMode, [['calm', '🌫 Calm'], ['live', '⚡ Live'], ['still', '⏸ Still']], (value) => { this.motionMode = value; this.autoDrift = value === 'live' ? 0.0001 : value === 'still' ? 0 : 0.00004; this.updateControlPills(); this.savePreferences(); });
+    build(this.presetProfilesEl, this.presetProfile, [['clean', '🧼 Clean HA'], ['galaxy', '🌌 Galaxy'], ['debug', '🛠 Debug'], ['problems', '🚨 Problems']], (value) => this.applyPresetProfile(value));
+    build(this.effectsEl, this.effects, [['orbitRings', '🪐 Orbitbanor'], ['nebulas', '☁️ Nebulosor'], ['relationTraffic', '🔗 Länktrafik'], ['autoZoom', '🎯 Auto-zoom'], ['cinematicGlow', '✨ Glow']], (value) => {
       this.effects[value] = !this.effects[value];
       this.applyEffects();
       this.updateControlPills();
       this.drawMiniMap();
+      this.savePreferences();
     }, true);
-    build(this.windowPresetsEl, this.windowPreset, [['overview', 'Översikt'], ['snapshot', 'Snapshot'], ['relations', 'Kopplingar'], ['focus', 'Fokus'], ['problem', 'Problem']], (value) => {
+    build(this.windowPresetsEl, this.windowPreset, [['overview', '🪟 Översikt'], ['snapshot', '📸 Snapshot'], ['relations', '🧬 Kopplingar'], ['focus', '🎯 Fokus'], ['problem', '⚠️ Problem']], (value) => {
       this.windowPreset = value;
       this.updateWindowPreset();
       this.updateMobileUI();
       if (this.panelAsideEl && !this.isMobileLayout()) this.panelAsideEl.scrollTo({ top: 0, behavior: 'smooth' });
       this.updateControlPills();
+      this.savePreferences();
     });
     this.updateWindowPreset();
   }
