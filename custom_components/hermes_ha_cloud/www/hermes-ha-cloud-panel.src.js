@@ -12,6 +12,9 @@ class HermesHACloudPanel extends HTMLElement {
     this.viewMode = 'constellation';
     this.labelMode = 'normal';
     this.motionMode = 'calm';
+    this.mobileControlsCollapsed = false;
+    this.mobileMiniMapVisible = false;
+    this.mobileTab = 'snapshot';
     this.selectedNode = null;
     this.hoveredNode = null;
     this.searchQuery = '';
@@ -48,6 +51,11 @@ class HermesHACloudPanel extends HTMLElement {
     this.focusPathsEl = this.shadowRoot.getElementById('focuspaths');
     this.problemListEl = this.shadowRoot.getElementById('problemlist');
     this.relationsEl = this.shadowRoot.getElementById('relations');
+    this.mobileTabsEl = this.shadowRoot.getElementById('mobiletabs');
+    this.mobileControlsToggleEl = this.shadowRoot.getElementById('mobile-controls-toggle');
+    this.mobileMiniMapToggleEl = this.shadowRoot.getElementById('mobile-minimap-toggle');
+    this.mobileControlsBodyEl = this.shadowRoot.getElementById('mobile-controls-body');
+    this.minimapWrapEl = this.shadowRoot.getElementById('minimap-wrap');
     this.labelModeEl = this.shadowRoot.getElementById('labelmodes');
     this.motionModeEl = this.shadowRoot.getElementById('motionmodes');
     this.viewModeEl = this.shadowRoot.getElementById('viewmodes');
@@ -157,6 +165,14 @@ class HermesHACloudPanel extends HTMLElement {
         .node-label .m { display: block; margin-top: 3px; color: #9fb3dd; font-size: 10px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .hud { position: absolute; inset: 0 auto auto 0; width: min(860px, calc(100% - 28px)); margin: 16px; pointer-events: none; z-index: 4; }
         .headline { pointer-events: auto; background: linear-gradient(180deg, rgba(9,14,31,0.84), rgba(9,14,31,0.48)); border: 1px solid var(--border); border-radius: 18px; padding: 18px 20px; box-shadow: 0 14px 42px rgba(0,0,0,0.24); }
+        .mobile-toolbar, .mobile-tabs { display: none; }
+        .mobile-toolbar { margin-top: 12px; gap: 8px; }
+        .mobile-controls-body.collapsed { display: none; }
+        .mobile-toolbar button, .mobile-tabs button {
+          border: 1px solid rgba(140, 180, 255, 0.16); background: rgba(14, 21, 42, 0.84); color: #eef4ff;
+          padding: 9px 12px; border-radius: 999px; cursor: pointer; transition: 140ms ease; font: inherit;
+        }
+        .mobile-toolbar button.active, .mobile-tabs button.active { background: rgba(36, 75, 164, 0.95); border-color: rgba(125, 215, 255, 0.34); }
         .eyebrow { text-transform: uppercase; letter-spacing: 0.18em; font-size: 11px; color: #82b5ff; margin-bottom: 6px; }
         h1 { margin: 0; font-size: 30px; line-height: 1.1; }
         .sub { margin-top: 8px; max-width: 760px; color: #b0c0e8; font-size: 14px; line-height: 1.55; }
@@ -229,6 +245,16 @@ class HermesHACloudPanel extends HTMLElement {
             padding: 14px;
             border-radius: 16px;
           }
+          .mobile-toolbar,
+          .mobile-tabs {
+            display: flex;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            scrollbar-width: none;
+            -webkit-overflow-scrolling: touch;
+          }
+          .mobile-toolbar::-webkit-scrollbar,
+          .mobile-tabs::-webkit-scrollbar { display: none; }
           .eyebrow {
             font-size: 10px;
             letter-spacing: 0.14em;
@@ -284,6 +310,9 @@ class HermesHACloudPanel extends HTMLElement {
             margin: 0 auto 12px;
             z-index: 4;
           }
+          .minimap-wrap.hidden-mobile {
+            display: none;
+          }
           canvas#minimap {
             width: 148px;
             height: 148px;
@@ -294,6 +323,19 @@ class HermesHACloudPanel extends HTMLElement {
           aside {
             padding: 10px;
             gap: 10px;
+          }
+          .mobile-tabs {
+            margin-bottom: 2px;
+            gap: 8px;
+          }
+          aside .card[data-panel] {
+            display: none;
+          }
+          aside[data-mobile-tab="snapshot"] .card[data-panel="snapshot"],
+          aside[data-mobile-tab="relations"] .card[data-panel="relations"],
+          aside[data-mobile-tab="focus"] .card[data-panel="focus"],
+          aside[data-mobile-tab="problem"] .card[data-panel="problem"] {
+            display: block;
           }
           .card {
             padding: 12px;
@@ -346,6 +388,11 @@ class HermesHACloudPanel extends HTMLElement {
               <div class="eyebrow">Home Assistant / topology observatory</div>
               <h1>Hermes HA Cloud</h1>
               <div class="sub">HA-specifik molnkarta där fokus ligger på aktiva och fungerande delar först. Problem, unavailable och trasiga delar finns kvar men filtreras in separat. Objekt är hårdare separerade för bättre läsbarhet och tydligare relationer.</div>
+              <div class="mobile-toolbar">
+                <button id="mobile-controls-toggle" type="button">Kontroller</button>
+                <button id="mobile-minimap-toggle" type="button">Karta</button>
+              </div>
+              <div class="mobile-controls-body" id="mobile-controls-body">
               <div class="controls">
                 <label class="search"><input id="search" type="search" placeholder="Sök rum, enheter, integrationer, automations, personer..." /></label>
                 <div class="control-group control-pills" id="viewmodes"></div>
@@ -364,35 +411,42 @@ class HermesHACloudPanel extends HTMLElement {
                 <span>Personer</span>
                 <span class="critical">Unavailable / problem</span>
               </div>
+              </div>
             </div>
           </div>
-          <div class="minimap-wrap">
+          <div class="minimap-wrap" id="minimap-wrap">
             <canvas id="minimap" width="180" height="180"></canvas>
             <div class="minimap-copy">Layer map / live focus radar</div>
           </div>
         </div>
         <aside>
-          <div class="card">
+          <div class="mobile-tabs" id="mobiletabs">
+            <button type="button" data-tab="snapshot">Snapshot</button>
+            <button type="button" data-tab="relations">Kopplingar</button>
+            <button type="button" data-tab="focus">Fokus</button>
+            <button type="button" data-tab="problem">Problem</button>
+          </div>
+          <div class="card" data-panel="snapshot">
             <h2>Live snapshot</h2>
             <div class="stats" id="stats"></div>
           </div>
-          <div class="card" id="details"></div>
-          <div class="card">
+          <div class="card" id="details" data-panel="snapshot"></div>
+          <div class="card" data-panel="relations">
             <h3>Kopplingar</h3>
             <div class="microcopy">Direkta relationer till vald nod: vilka saker den tillhör, styr, påverkar eller ligger i samma area som.</div>
             <div class="relations" id="relations"></div>
           </div>
-          <div class="card">
+          <div class="card" data-panel="focus">
             <h3>Focus lane</h3>
             <div class="microcopy">Viktigaste synliga noderna just nu. Problem och unavailable får extra vikt.</div>
             <div class="focus-grid" id="focuslist"></div>
           </div>
-          <div class="card">
+          <div class="card" data-panel="focus">
             <h3>Fokusvägar</h3>
             <div class="microcopy">Klickbara kedjor mellan rum, enhet, entitet och automation/scen för vald nod.</div>
             <div class="focus-paths" id="focuspaths"></div>
           </div>
-          <div class="card">
+          <div class="card" data-panel="problem">
             <h3>Problem-enheter</h3>
             <div class="microcopy">Enheter med unavailable- eller unknown-tyngd. Klicka för att följa kopplingarna.</div>
             <div class="list" id="problemlist"></div>
@@ -487,6 +541,7 @@ class HermesHACloudPanel extends HTMLElement {
       this.updateSidePanel();
       this.updateProblemList();
       this.updateFocusLane();
+      this.updateMobileUI();
       this.drawMiniMap();
     } catch (err) {
       this.detailsEl.innerHTML = `<h3>Could not load data</h3><div class="detail-body">${this.escapeHtml(String(err?.message || err))}</div>`;
@@ -708,6 +763,43 @@ class HermesHACloudPanel extends HTMLElement {
       this.updateFocusLane();
       this.updateSidePanel();
     });
+    this.mobileControlsToggleEl?.addEventListener('click', () => {
+      this.mobileControlsCollapsed = !this.mobileControlsCollapsed;
+      this.updateMobileUI();
+    });
+    this.mobileMiniMapToggleEl?.addEventListener('click', () => {
+      this.mobileMiniMapVisible = !this.mobileMiniMapVisible;
+      this.updateMobileUI();
+      this.drawMiniMap();
+    });
+    this.mobileTabsEl?.querySelectorAll('button[data-tab]').forEach((button) => {
+      button.addEventListener('click', () => {
+        this.mobileTab = button.dataset.tab || 'snapshot';
+        this.updateMobileUI();
+      });
+    });
+  }
+
+  isMobileLayout() {
+    return (this.width || window.innerWidth || 0) <= 720;
+  }
+
+  updateMobileUI() {
+    const mobile = this.isMobileLayout();
+    const controlsBody = this.mobileControlsBodyEl;
+    const controlsBtn = this.mobileControlsToggleEl;
+    const mapBtn = this.mobileMiniMapToggleEl;
+    const tabs = this.mobileTabsEl;
+    const aside = tabs?.parentElement;
+    if (controlsBody) controlsBody.classList.toggle('collapsed', mobile && this.mobileControlsCollapsed);
+    if (this.minimapWrapEl) this.minimapWrapEl.classList.toggle('hidden-mobile', mobile && !this.mobileMiniMapVisible);
+    if (controlsBtn) controlsBtn.classList.toggle('active', mobile && !this.mobileControlsCollapsed);
+    if (mapBtn) mapBtn.classList.toggle('active', mobile && this.mobileMiniMapVisible);
+    if (aside) {
+      if (mobile) aside.setAttribute('data-mobile-tab', this.mobileTab);
+      else aside.removeAttribute('data-mobile-tab');
+    }
+    tabs?.querySelectorAll('button[data-tab]').forEach((button) => button.classList.toggle('active', mobile && button.dataset.tab === this.mobileTab));
   }
 
   onPointerMove(ev) {
@@ -1065,6 +1157,7 @@ class HermesHACloudPanel extends HTMLElement {
     this.camera.aspect = rect.width / rect.height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(rect.width, rect.height, false);
+    this.updateMobileUI();
     this.drawMiniMap();
   }
 
