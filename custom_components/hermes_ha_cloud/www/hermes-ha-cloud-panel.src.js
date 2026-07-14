@@ -19,7 +19,7 @@ class HermesHACloudPanel extends HTMLElement {
     this.drawerOpen = false;
     this.mobileControlsCollapsed = false;
     this.mobileMiniMapVisible = false;
-    this.mobileTab = 'snapshot';
+    this.mobileTab = 'cloud';
     this.selectedNode = null;
     this.hoveredNode = null;
     this.searchQuery = '';
@@ -315,29 +315,44 @@ class HermesHACloudPanel extends HTMLElement {
           .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
         @media (max-width: 980px) {
-          .layout { grid-template-columns: 1fr; grid-template-rows: minmax(56vh, 60vh) auto; }
+          .layout { grid-template-columns: 1fr; grid-template-rows: minmax(62vh, 68vh) auto; }
           .scene-wrap { border-right: 0; border-bottom: 1px solid var(--border); }
         }
         @media (max-width: 720px) {
-          .layout { min-height: 100dvh; height: auto; grid-template-rows: auto auto; }
+          .layout { min-height: 100dvh; height: auto; grid-template-rows: minmax(72dvh, 82dvh) auto; }
           .scene-wrap {
             border-right: 0;
             border-bottom: 1px solid var(--border);
             display: flex;
             flex-direction: column;
             justify-content: flex-start;
-            min-height: 0;
+            min-height: min(82dvh, 900px);
             overflow: clip;
           }
           .hud {
             position: relative;
             inset: auto;
             width: auto;
-            margin: 10px;
+            margin: 8px;
           }
           .headline {
-            padding: 14px;
-            border-radius: 16px;
+            padding: 10px 12px;
+            border-radius: 14px;
+            background: linear-gradient(180deg, rgba(9,14,31,0.76), rgba(9,14,31,0.34));
+            backdrop-filter: blur(10px);
+          }
+          .drawer-launch {
+            margin-top: 10px;
+            gap: 8px;
+            align-items: center;
+          }
+          .drawer-launch .drawer-hint {
+            display: none;
+          }
+          .drawer-toggle {
+            width: 100%;
+            justify-content: center;
+            text-align: center;
           }
           .mobile-toolbar,
           .mobile-tabs {
@@ -349,16 +364,30 @@ class HermesHACloudPanel extends HTMLElement {
           }
           .mobile-toolbar::-webkit-scrollbar,
           .mobile-tabs::-webkit-scrollbar { display: none; }
+          .controls-drawer {
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            bottom: 10px;
+            width: auto;
+            max-width: none;
+            border-radius: 18px;
+          }
+          .drawer-body {
+            padding: 12px 12px 16px;
+          }
           .eyebrow {
             font-size: 10px;
-            letter-spacing: 0.14em;
+            letter-spacing: 0.12em;
+            margin-bottom: 4px;
           }
           h1 {
-            font-size: 22px;
+            font-size: 20px;
+            line-height: 1.05;
           }
           .sub {
-            font-size: 13px;
-            line-height: 1.45;
+            font-size: 12px;
+            line-height: 1.32;
             max-width: none;
           }
           .controls {
@@ -415,12 +444,19 @@ class HermesHACloudPanel extends HTMLElement {
             font-size: 10px;
           }
           aside {
-            padding: 10px;
-            gap: 10px;
+            padding: 8px 10px 12px;
+            gap: 8px;
+            background: linear-gradient(180deg, rgba(4,7,16,0.55), rgba(4,7,16,0.92));
           }
           .mobile-tabs {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            padding: 2px 0 4px;
             margin-bottom: 2px;
             gap: 8px;
+            background: linear-gradient(180deg, rgba(4,7,16,0.96), rgba(4,7,16,0.72));
+            backdrop-filter: blur(10px);
           }
           aside .card[data-panel] {
             display: none;
@@ -552,6 +588,7 @@ class HermesHACloudPanel extends HTMLElement {
         </div>
         <aside>
           <div class="mobile-tabs" id="mobiletabs">
+            <button type="button" data-tab="cloud">Moln</button>
             <button type="button" data-tab="snapshot">Snapshot</button>
             <button type="button" data-tab="relations">Kopplingar</button>
             <button type="button" data-tab="focus">Fokus</button>
@@ -1067,8 +1104,12 @@ class HermesHACloudPanel extends HTMLElement {
     });
     this.mobileTabsEl?.querySelectorAll('button[data-tab]').forEach((button) => {
       button.addEventListener('click', () => {
-        this.mobileTab = button.dataset.tab || 'snapshot';
-        this.windowPreset = this.mobileTab === 'snapshot' ? 'snapshot' : this.mobileTab;
+        this.mobileTab = button.dataset.tab || 'cloud';
+        this.windowPreset = this.mobileTab === 'cloud'
+          ? 'overview'
+          : this.mobileTab === 'snapshot'
+            ? 'snapshot'
+            : this.mobileTab;
         this.updateControlPills();
         this.updateMobileUI();
       });
@@ -1123,7 +1164,7 @@ class HermesHACloudPanel extends HTMLElement {
     const preset = this.windowPreset || 'overview';
     this.panelAsideEl.setAttribute('data-window-preset', preset);
     if (this.isMobileLayout()) {
-      const mobileMap = { overview: 'snapshot', snapshot: 'snapshot', relations: 'relations', focus: 'focus', problem: 'problem' };
+      const mobileMap = { overview: 'cloud', snapshot: 'snapshot', relations: 'relations', focus: 'focus', problem: 'problem' };
       this.mobileTab = mobileMap[preset] || this.mobileTab;
     }
   }
