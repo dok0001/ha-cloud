@@ -16,6 +16,7 @@ class HermesHACloudPanel extends HTMLElement {
     this.windowPreset = 'overview';
     this.presetProfile = 'galaxy';
     this.settingsCollapsed = false;
+    this.drawerOpen = false;
     this.mobileControlsCollapsed = false;
     this.mobileMiniMapVisible = false;
     this.mobileTab = 'snapshot';
@@ -69,6 +70,10 @@ class HermesHACloudPanel extends HTMLElement {
     this.presetProfilesEl = this.shadowRoot.getElementById('presetprofiles');
     this.settingsToggleEl = this.shadowRoot.getElementById('settings-toggle');
     this.settingsBodyEl = this.shadowRoot.getElementById('settings-body');
+    this.drawerToggleEl = this.shadowRoot.getElementById('drawer-toggle');
+    this.drawerCloseEl = this.shadowRoot.getElementById('drawer-close');
+    this.drawerOverlayEl = this.shadowRoot.getElementById('drawer-overlay');
+    this.drawerShellEl = this.shadowRoot.getElementById('controls-drawer');
     this.panelAsideEl = this.shadowRoot.querySelector('aside');
     this.miniMapEl = this.shadowRoot.getElementById('minimap');
     this.miniMapCtx = this.miniMapEl?.getContext('2d');
@@ -109,6 +114,7 @@ class HermesHACloudPanel extends HTMLElement {
       if (prefs.windowPreset) this.windowPreset = prefs.windowPreset;
       if (prefs.presetProfile) this.presetProfile = prefs.presetProfile;
       if (typeof prefs.settingsCollapsed === 'boolean') this.settingsCollapsed = prefs.settingsCollapsed;
+      if (typeof prefs.drawerOpen === 'boolean') this.drawerOpen = prefs.drawerOpen;
       if (prefs.effects && typeof prefs.effects === 'object') this.effects = { ...this.effects, ...prefs.effects };
       this.autoDrift = this.motionMode === 'live' ? 0.0001 : this.motionMode === 'still' ? 0 : 0.00004;
     } catch {}
@@ -124,6 +130,7 @@ class HermesHACloudPanel extends HTMLElement {
         windowPreset: this.windowPreset,
         presetProfile: this.presetProfile,
         settingsCollapsed: this.settingsCollapsed,
+        drawerOpen: this.drawerOpen,
       }));
     } catch {}
   }
@@ -206,6 +213,30 @@ class HermesHACloudPanel extends HTMLElement {
         .node-label .m { display: block; margin-top: 3px; color: #9fb3dd; font-size: 10px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .hud { position: absolute; inset: 0 auto auto 0; width: min(860px, calc(100% - 28px)); margin: 16px; pointer-events: none; z-index: 4; }
         .headline { pointer-events: auto; background: linear-gradient(180deg, rgba(9,14,31,0.84), rgba(9,14,31,0.48)); border: 1px solid var(--border); border-radius: 18px; padding: 18px 20px; box-shadow: 0 14px 42px rgba(0,0,0,0.24); }
+        .drawer-launch { margin-top: 12px; display: flex; gap: 10px; align-items: center; pointer-events: auto; }
+        .drawer-toggle, .drawer-close {
+          border: 1px solid rgba(140, 180, 255, 0.18); background: rgba(11, 18, 34, 0.88); color: #eef4ff;
+          padding: 10px 14px; border-radius: 14px; cursor: pointer; font: inherit;
+          box-shadow: 0 10px 24px rgba(0,0,0,0.2);
+        }
+        .drawer-hint { color: #9ab0da; font-size: 12px; }
+        .drawer-overlay {
+          position: absolute; inset: 0; background: rgba(2, 5, 12, 0.52); backdrop-filter: blur(6px);
+          opacity: 0; pointer-events: none; transition: opacity 180ms ease; z-index: 6;
+        }
+        .drawer-overlay.open { opacity: 1; pointer-events: auto; }
+        .controls-drawer {
+          position: absolute; top: 16px; left: 16px; bottom: 16px; width: min(430px, calc(100% - 32px));
+          border: 1px solid rgba(130, 175, 255, 0.16); border-radius: 20px;
+          background: linear-gradient(180deg, rgba(7,12,24,0.96), rgba(5,9,18,0.96));
+          box-shadow: 0 26px 70px rgba(0,0,0,0.4); z-index: 7; overflow: auto;
+          transform: translateX(-112%); opacity: 0; pointer-events: none; transition: transform 180ms ease, opacity 180ms ease;
+        }
+        .controls-drawer.open { transform: translateX(0); opacity: 1; pointer-events: auto; }
+        .drawer-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; background: rgba(9, 15, 28, 0.94); border-bottom: 1px solid rgba(130,175,255,0.12); }
+        .drawer-head strong { font-size: 14px; }
+        .drawer-head small { color: #98aed8; display: block; margin-top: 3px; }
+        .drawer-body { padding: 14px 16px 18px; }
         .mobile-toolbar, .mobile-tabs { display: none; }
         .mobile-toolbar { margin-top: 12px; gap: 8px; }
         .mobile-controls-body.collapsed { display: none; }
@@ -443,19 +474,13 @@ class HermesHACloudPanel extends HTMLElement {
           <div class="grid-glow"></div>
           <div class="labels" id="labels"></div>
           <div class="tooltip" id="tooltip"></div>
-          <div class="vignette"></div>
-          <div class="cinema-bar top"></div>
-          <div class="cinema-bar bottom"></div>
-          <div class="hud">
-            <div class="headline">
-              <div class="eyebrow">Home Assistant / topology observatory</div>
-              <h1>Hermes HA Cloud</h1>
-              <div class="sub">HA-specifik molnkarta där fokus ligger på aktiva och fungerande delar först. Problem, unavailable och trasiga delar finns kvar men filtreras in separat. Objekt är hårdare separerade för bättre läsbarhet och tydligare relationer.</div>
-              <div class="mobile-toolbar">
-                <button id="mobile-controls-toggle" type="button">Kontroller</button>
-                <button id="mobile-minimap-toggle" type="button">Karta</button>
-              </div>
-              <div class="mobile-controls-body" id="mobile-controls-body">
+          <div class="drawer-overlay${this.drawerOpen ? ' open' : ''}" id="drawer-overlay"></div>
+          <div class="controls-drawer${this.drawerOpen ? ' open' : ''}" id="controls-drawer">
+            <div class="drawer-head">
+              <span><strong>🧭 Kontrollpanel</strong><small>App-lik drawer för vyer, profiler och effekter</small></span>
+              <button class="drawer-close" id="drawer-close" type="button">Stäng</button>
+            </div>
+            <div class="drawer-body">
               <div class="controls">
                 <label class="search"><input id="search" type="search" placeholder="Sök rum, enheter, integrationer, automations, personer..." /></label>
                 <div class="control-group control-pills" id="viewmodes"></div>
@@ -499,7 +524,25 @@ class HermesHACloudPanel extends HTMLElement {
                 <span>Personer</span>
                 <span class="critical">Unavailable / problem</span>
               </div>
+            </div>
+          </div>
+          <div class="vignette"></div>
+          <div class="cinema-bar top"></div>
+          <div class="cinema-bar bottom"></div>
+          <div class="hud">
+            <div class="headline">
+              <div class="eyebrow">Home Assistant / topology observatory</div>
+              <h1>Hermes HA Cloud</h1>
+              <div class="sub">HA-specifik molnkarta där fokus ligger på aktiva och fungerande delar först. Problem, unavailable och trasiga delar finns kvar men filtreras in separat. Objekt är hårdare separerade för bättre läsbarhet och tydligare relationer.</div>
+              <div class="drawer-launch">
+                <button class="drawer-toggle" id="drawer-toggle" type="button">☰ Kontrollpanel</button>
+                <span class="drawer-hint">Öppna vyer, presets och effekter i en sidomeny</span>
               </div>
+              <div class="mobile-toolbar">
+                <button id="mobile-controls-toggle" type="button">Drawer</button>
+                <button id="mobile-minimap-toggle" type="button">Karta</button>
+              </div>
+              <div class="mobile-controls-body" id="mobile-controls-body"></div>
             </div>
           </div>
           <div class="minimap-wrap" id="minimap-wrap">
@@ -985,8 +1028,31 @@ class HermesHACloudPanel extends HTMLElement {
       this.updateSidePanel();
     });
     this.mobileControlsToggleEl?.addEventListener('click', () => {
-      this.mobileControlsCollapsed = !this.mobileControlsCollapsed;
-      this.updateMobileUI();
+      this.drawerOpen = !this.drawerOpen;
+      this.updateDrawerUI();
+      this.savePreferences();
+    });
+    this.drawerToggleEl?.addEventListener('click', () => {
+      this.drawerOpen = !this.drawerOpen;
+      this.updateDrawerUI();
+      this.savePreferences();
+    });
+    this.drawerCloseEl?.addEventListener('click', () => {
+      this.drawerOpen = false;
+      this.updateDrawerUI();
+      this.savePreferences();
+    });
+    this.drawerOverlayEl?.addEventListener('click', () => {
+      this.drawerOpen = false;
+      this.updateDrawerUI();
+      this.savePreferences();
+    });
+    this.shadowRoot.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape' && this.drawerOpen) {
+        this.drawerOpen = false;
+        this.updateDrawerUI();
+        this.savePreferences();
+      }
     });
     this.settingsToggleEl?.addEventListener('click', () => {
       this.settingsCollapsed = !this.settingsCollapsed;
@@ -1013,16 +1079,25 @@ class HermesHACloudPanel extends HTMLElement {
     return (this.width || window.innerWidth || 0) <= 720;
   }
 
+  updateDrawerUI() {
+    const mobile = this.isMobileLayout();
+    const open = mobile ? !!this.drawerOpen : !!this.drawerOpen;
+    this.drawerShellEl?.classList.toggle('open', open);
+    this.drawerOverlayEl?.classList.toggle('open', open);
+    this.drawerToggleEl?.classList.toggle('active', open);
+    this.mobileControlsToggleEl?.classList.toggle('active', open);
+    if (this.mobileControlsBodyEl) this.mobileControlsBodyEl.classList.toggle('collapsed', !open);
+  }
+
   updateMobileUI() {
     const mobile = this.isMobileLayout();
-    const controlsBody = this.mobileControlsBodyEl;
     const controlsBtn = this.mobileControlsToggleEl;
     const mapBtn = this.mobileMiniMapToggleEl;
     const tabs = this.mobileTabsEl;
     const aside = tabs?.parentElement;
-    if (controlsBody) controlsBody.classList.toggle('collapsed', mobile && this.mobileControlsCollapsed);
+    this.updateDrawerUI();
     if (this.minimapWrapEl) this.minimapWrapEl.classList.toggle('hidden-mobile', mobile && !this.mobileMiniMapVisible);
-    if (controlsBtn) controlsBtn.classList.toggle('active', mobile && !this.mobileControlsCollapsed);
+    if (controlsBtn) controlsBtn.classList.toggle('active', mobile && this.drawerOpen);
     if (mapBtn) mapBtn.classList.toggle('active', mobile && this.mobileMiniMapVisible);
     if (aside) {
       if (mobile) aside.setAttribute('data-mobile-tab', this.mobileTab);
@@ -1101,6 +1176,7 @@ class HermesHACloudPanel extends HTMLElement {
     this.applyEffects();
     this.updateWindowPreset();
     this.updateMobileUI();
+    this.updateDrawerUI();
     this.updateControlPills();
     this.updateFocusLane();
     this.drawMiniMap();
