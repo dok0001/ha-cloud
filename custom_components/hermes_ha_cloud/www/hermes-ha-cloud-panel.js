@@ -1190,15 +1190,15 @@ class HermesHACloudPanel extends HTMLElement {
     rim.intensity = 7;
     rim.range = 980;
     const glowLayer = new GlowLayer('ha-cloud-glow', scene);
-    glowLayer.intensity = 0.9;
+    glowLayer.intensity = 1.16;
     const highlightLayer = new HighlightLayer('ha-cloud-highlight', scene);
     highlightLayer.innerGlow = false;
     highlightLayer.outerGlow = true;
-    highlightLayer.blurHorizontalSize = 1.2;
-    highlightLayer.blurVerticalSize = 1.2;
+    highlightLayer.blurHorizontalSize = 1.6;
+    highlightLayer.blurVerticalSize = 1.6;
     const selectedLight = new PointLight('ha-cloud-selected-light', new Vector3(0, 0, 0), scene);
     selectedLight.intensity = 0;
-    selectedLight.range = 140;
+    selectedLight.range = 180;
     this.babylon = { canvas, engine, scene, camera, hemi, key, fill, rim, glowLayer, highlightLayer, selectedLight };
     engine.runRenderLoop(() => scene.render());
   }
@@ -1210,20 +1210,32 @@ class HermesHACloudPanel extends HTMLElement {
   createBabylonCoreMaterial(node) {
     const color = this.babylonColor3FromInt(this.colorFor(node));
     const material = new StandardMaterial(`orb-core-${node.id}`, this.babylon.scene);
-    material.diffuseColor = color.scale(node.layer === 'area' ? 0.22 : 0.14);
-    material.specularColor = color.scale(0.18);
-    material.emissiveColor = color.scale(node.layer === 'area' ? 1.3 : node.severity === 'critical' ? 1.55 : 0.95);
-    material.alpha = Math.min(0.98, node.alpha || 0.9);
+    material.diffuseColor = color.scale(node.layer === 'area' ? 0.32 : node.severity === 'critical' ? 0.22 : 0.16);
+    material.specularColor = color.scale(node.layer === 'area' ? 0.36 : 0.24);
+    material.emissiveColor = color.scale(node.layer === 'area' ? 1.65 : node.severity === 'critical' ? 1.95 : 1.12);
+    material.alpha = Math.min(0.995, (node.alpha || 0.9) + (node.layer === 'area' ? 0.06 : 0));
+    material.backFaceCulling = false;
     return material;
   }
 
   createBabylonShellMaterial(node) {
     const color = this.babylonColor3FromInt(this.colorFor(node));
     const material = new StandardMaterial(`orb-shell-${node.id}`, this.babylon.scene);
-    material.diffuseColor = color.scale(0.04);
+    material.diffuseColor = color.scale(0.055);
+    material.specularColor = color.scale(0.06);
+    material.emissiveColor = color.scale(node.layer === 'area' ? 0.92 : node.severity === 'critical' ? 1.08 : 0.46);
+    material.alpha = node.layer === 'area' ? 0.22 : node.severity === 'critical' ? 0.19 : 0.12;
+    material.backFaceCulling = false;
+    return material;
+  }
+
+  createBabylonAuraMaterial(node) {
+    const color = this.babylonColor3FromInt(this.colorFor(node));
+    const material = new StandardMaterial(`orb-aura-${node.id}`, this.babylon.scene);
+    material.diffuseColor = color.scale(0.02);
     material.specularColor = Color3.Black();
-    material.emissiveColor = color.scale(node.layer === 'area' ? 0.7 : node.severity === 'critical' ? 0.9 : 0.35);
-    material.alpha = node.layer === 'area' ? 0.18 : node.severity === 'critical' ? 0.16 : 0.11;
+    material.emissiveColor = color.scale(node.layer === 'area' ? 0.75 : node.severity === 'critical' ? 0.92 : 0.3);
+    material.alpha = node.layer === 'area' ? 0.11 : node.severity === 'critical' ? 0.1 : 0.055;
     material.backFaceCulling = false;
     return material;
   }
@@ -1232,6 +1244,7 @@ class HermesHACloudPanel extends HTMLElement {
     if (!this.babylon?.scene) return;
     this.nodeObjects.forEach((mesh) => {
       try { mesh.userData?.shell?.dispose(); } catch {}
+      try { mesh.userData?.aura?.dispose(); } catch {}
       try { mesh.userData?.heroLight?.dispose(); } catch {}
       try { this.babylon.highlightLayer?.removeMesh(mesh); } catch {}
       try { mesh.dispose(); } catch {}
@@ -1250,19 +1263,26 @@ class HermesHACloudPanel extends HTMLElement {
       mesh.scaling = new Vector3(node.size, node.size, node.size);
       mesh.userData = { node, baseColor: this.babylonColor3FromInt(this.colorFor(node)), highlighted: false };
       mesh.visible = true;
-      const shell = MeshBuilder.CreateSphere(`ha-cloud-orb-shell-${node.id}`, { diameter: 2.6, segments: 12 }, this.babylon.scene);
+      const shell = MeshBuilder.CreateSphere(`ha-cloud-orb-shell-${node.id}`, { diameter: 2.6, segments: 14 }, this.babylon.scene);
       shell.material = this.createBabylonShellMaterial(node);
       shell.parent = mesh;
       shell.position = Vector3.Zero();
       shell.isPickable = false;
-      shell.scaling = new Vector3(node.layer === 'area' ? 1.95 : node.severity === 'critical' ? 1.7 : 1.45, node.layer === 'area' ? 1.95 : node.severity === 'critical' ? 1.7 : 1.45, node.layer === 'area' ? 1.95 : node.severity === 'critical' ? 1.7 : 1.45);
+      shell.scaling = new Vector3(node.layer === 'area' ? 2.08 : node.severity === 'critical' ? 1.82 : 1.5, node.layer === 'area' ? 2.08 : node.severity === 'critical' ? 1.82 : 1.5, node.layer === 'area' ? 2.08 : node.severity === 'critical' ? 1.82 : 1.5);
       mesh.userData.shell = shell;
+      const aura = MeshBuilder.CreateSphere(`ha-cloud-orb-aura-${node.id}`, { diameter: 3.2, segments: 12 }, this.babylon.scene);
+      aura.material = this.createBabylonAuraMaterial(node);
+      aura.parent = mesh;
+      aura.position = Vector3.Zero();
+      aura.isPickable = false;
+      aura.scaling = new Vector3(node.layer === 'area' ? 2.95 : node.severity === 'critical' ? 2.35 : 1.75, node.layer === 'area' ? 2.95 : node.severity === 'critical' ? 2.35 : 1.75, node.layer === 'area' ? 2.95 : node.severity === 'critical' ? 2.35 : 1.75);
+      mesh.userData.aura = aura;
       if (node.layer === 'area' || node.severity === 'critical') {
         const heroLight = new PointLight(`ha-cloud-orb-light-${node.id}`, new Vector3(0, 0, 0), this.babylon.scene);
         heroLight.parent = mesh;
         heroLight.diffuse = mesh.userData.baseColor;
         heroLight.intensity = 0;
-        heroLight.range = Math.max(40, node.size * 14);
+        heroLight.range = Math.max(56, node.size * 18);
         mesh.userData.heroLight = heroLight;
       }
       this.nodeObjects.push(mesh);
@@ -1314,7 +1334,7 @@ class HermesHACloudPanel extends HTMLElement {
     if (focusMesh?.position && this.babylon.selectedLight) {
       this.babylon.selectedLight.position = focusMesh.position.clone();
       this.babylon.selectedLight.diffuse = focusMesh.userData.baseColor;
-      this.babylon.selectedLight.intensity = this.selectedNode ? 12 : 7;
+      this.babylon.selectedLight.intensity = this.selectedNode ? 16 : 9;
     } else if (this.babylon.selectedLight) {
       this.babylon.selectedLight.intensity = 0;
     }
@@ -1364,18 +1384,28 @@ class HermesHACloudPanel extends HTMLElement {
       livePositionById.set(node.id, node.position.clone());
       const active = this.hoveredNode?.id === node.id || this.selectedNode?.id === node.id;
       const inLineage = lineageIds.has(node.id);
-      const scale = active ? node.size * 1.22 : inLineage ? node.size * 1.08 : node.size;
+      const scale = active ? node.size * 1.24 : inLineage ? node.size * 1.1 : node.size;
       const currentScale = mesh.scaling?.x || node.size;
       const nextScale = currentScale + (scale - currentScale) * 0.18;
       mesh.scaling.copyFromFloats(nextScale, nextScale, nextScale);
-      const emissiveScale = active ? 1.75 : inLineage ? 1.28 : node.layer === 'area' ? 1.2 : node.severity === 'critical' ? 1.35 : 0.95;
+      const emissiveScale = active ? (node.layer === 'area' ? 2.35 : 2.05) : inLineage ? 1.48 : node.layer === 'area' ? 1.72 : node.severity === 'critical' ? 1.72 : 1.08;
       mesh.material.emissiveColor = mesh.userData.baseColor.scale(emissiveScale);
-      mesh.material.alpha = active ? 1 : inLineage ? Math.min(0.99, node.alpha + 0.12) : Math.min(0.98, node.alpha);
+      mesh.material.alpha = active ? 1 : inLineage ? Math.min(0.995, node.alpha + 0.16) : Math.min(0.99, node.alpha + (node.layer === 'area' ? 0.06 : 0));
       if (mesh.userData.shell) {
         mesh.userData.shell.isVisible = !!this.effects.cinematicGlow;
-        mesh.userData.shell.material.alpha = active ? 0.22 : inLineage ? 0.16 : node.layer === 'area' ? 0.18 : node.severity === 'critical' ? 0.16 : 0.11;
+        mesh.userData.shell.material.alpha = active ? 0.32 : inLineage ? 0.22 : node.layer === 'area' ? 0.22 : node.severity === 'critical' ? 0.19 : 0.12;
+        const shellPulse = active ? 1.06 + Math.sin(t * 4.8) * 0.05 : inLineage ? 1.03 : 1;
+        const shellBase = node.layer === 'area' ? 2.08 : node.severity === 'critical' ? 1.82 : 1.5;
+        mesh.userData.shell.scaling.copyFromFloats(shellBase * shellPulse, shellBase * shellPulse, shellBase * shellPulse);
       }
-      if (mesh.userData.heroLight) mesh.userData.heroLight.intensity = active ? 18 : node.severity === 'critical' ? 9 : node.layer === 'area' ? 6 : 0;
+      if (mesh.userData.aura) {
+        mesh.userData.aura.isVisible = !!this.effects.cinematicGlow;
+        mesh.userData.aura.material.alpha = active ? 0.17 : inLineage ? 0.12 : node.layer === 'area' ? 0.11 : node.severity === 'critical' ? 0.1 : 0.055;
+        const auraPulse = active ? 1.12 + Math.sin(t * 3.2) * 0.08 : node.severity === 'critical' ? 1.05 + Math.sin(t * 2.2) * 0.03 : 1;
+        const auraBase = node.layer === 'area' ? 2.95 : node.severity === 'critical' ? 2.35 : 1.75;
+        mesh.userData.aura.scaling.copyFromFloats(auraBase * auraPulse, auraBase * auraPulse, auraBase * auraPulse);
+      }
+      if (mesh.userData.heroLight) mesh.userData.heroLight.intensity = active ? 24 : node.severity === 'critical' ? 12 : node.layer === 'area' ? 8 : 0;
       mesh.visibility = mesh.visible === false ? 0 : 1;
     }
     this.syncBabylonHighlights();
