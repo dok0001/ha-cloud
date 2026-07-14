@@ -603,6 +603,7 @@ class HermesHACloudPanel extends HTMLElement {
           layer,
           type: layer,
           basePosition,
+          stableBasePosition: basePosition.clone(),
           timelinePosition,
           position: basePosition.clone(),
           drift: layer === 'problem' ? 0.1 : 0.18 + (idx % 5) * 0.05,
@@ -611,6 +612,13 @@ class HermesHACloudPanel extends HTMLElement {
           size: cluster.baseSize + (item.importance || 0.4) * (layer === 'problem' ? 3.2 : 2.45),
           alpha: item.severity === 'critical' ? 0.94 : 0.42 + (item.importance || 0.4) * 0.45,
           searchable: `${item.title || ''} ${item.text || ''} ${item.group || ''} ${item.category || ''} ${item.meta || ''}`.toLowerCase(),
+          orbitParentId: null,
+          orbitRadius: 0,
+          orbitSpeed: 0,
+          orbitTilt: 0,
+          orbitYOffset: 0,
+          orbitPhase: theta,
+          orbitType: 'free',
         };
         groups.push(node);
         if (layer === 'area' && item.area_id) {
@@ -629,24 +637,91 @@ class HermesHACloudPanel extends HTMLElement {
     pack(this.data?.persons || [], 'person');
     pack(this.data?.problem_devices || [], 'problem');
 
+    const nodeById = new Map(groups.map((node) => [node.id, node]));
+    const entityToDevice = new Map();
+    const entityToArea = new Map();
+    const deviceToArea = new Map();
+    groups.forEach((node) => {
+      if (node.layer === 'entity') {
+        if (node.device_id) entityToDevice.set(node.entity_id || node.id.replace(/^entity-/, ''), node.device_id);
+        if (node.area_id) entityToArea.set(node.entity_id || node.id.replace(/^entity-/, ''), node.area_id);
+      }
+      if (node.layer === 'device' && node.area_id) deviceToArea.set(node.device_id || node.id.replace(/^device-/, ''), node.area_id);
+    });
+
+    const chooseParentId = (node) => {
+      if (node.layer === 'addon' || node.layer === 'integration') return null;
+      if (node.layer === 'area') return null;
+      if (node.layer === 'device') return node.area_id ? `area-${node.area_id}` : null;
+      if (node.layer === 'entity') return node.device_id ? `device-${node.device_id}` : (node.area_id ? `area-${node.area_id}` : null);
+      if (node.layer === 'problem') return node.device_id ? `device-${node.device_id}` : (node.area_id ? `area-${node.area_id}` : null);
+      if (node.layer === 'person') return node.area_id ? `area-${node.area_id}` : null;
+      if (node.layer === 'automation' || node.layer === 'scene') {
+        const relatedEntity = (node.related_entity_ids || [])[0];
+        const relatedDevice = relatedEntity ? entityToDevice.get(relatedEntity) : null;
+        const relatedArea = relatedEntity ? entityToArea.get(relatedEntity) : null;
+        return relatedDevice ? `device-${relatedDevice}` : (relatedArea ? `area-${relatedArea}` : (node.area_id ? `area-${node.area_id}` : null));
+      }
+      return null;
+    };
+
     groups.forEach((node, idx) => {
       const anchor = node.area_id ? areaAnchors.get(node.area_id) : null;
-      if (!anchor) return;
       const s = idx + 1;
       const orbit = new THREE.Vector3(jitter(s * 0.71, 18), jitter(s * 0.43, 10), jitter(s * 0.97, 16));
-      if (node.layer === 'device') {
-        node.basePosition = anchor.basePosition.clone().add(orbit.clone().multiplyScalar(0.85));
-        node.timelinePosition = anchor.timelinePosition.clone().add(new THREE.Vector3(16, 10, 0));
-      } else if (node.layer === 'entity') {
-        node.basePosition = anchor.basePosition.clone().add(orbit.clone().multiplyScalar(1.15)).add(new THREE.Vector3(0, -28, 0));
-        node.timelinePosition = anchor.timelinePosition.clone().add(new THREE.Vector3(34, 22, 0));
-      } else if (node.layer === 'automation' || node.layer === 'scene') {
-        node.basePosition = anchor.basePosition.clone().add(orbit.clone().multiplyScalar(0.75)).add(new THREE.Vector3(-18, -42, 20));
-      } else if (node.layer === 'person') {
-        node.basePosition = anchor.basePosition.clone().add(orbit.clone().multiplyScalar(0.55)).add(new THREE.Vector3(0, 30, 16));
-      } else if (node.layer === 'problem') {
-        node.basePosition = anchor.basePosition.clone().add(new THREE.Vector3(42, -12, 42)).add(orbit.clone().multiplyScalar(0.35));
+      if (anchor) {
+        if (node.layer === 'device') {
+          node.basePosition = anchor.basePosition.clone().add(orbit.clone().multiplyScalar(0.85));
+          node.timelinePosition = anchor.timelinePosition.clone().add(new THREE.Vector3(16, 10, 0));
+        } else if (node.layer === 'entity') {
+          node.basePosition = anchor.basePosition.clone().add(orbit.clone().multiplyScalar(1.15)).add(new THREE.Vector3(0, -28, 0));
+          node.timelinePosition = anchor.timelinePosition.clone().add(new THREE.Vector3(34, 22, 0));
+        } else if (node.layer === 'automation' || node.layer === 'scene') {
+          node.basePosition = anchor.basePosition.clone().add(orbit.clone().multiplyScalar(0.75)).add(new THREE.Vector3(-18, -42, 20));
+        } else if (node.layer === 'person') {
+          node.basePosition = anchor.basePosition.clone().add(orbit.clone().multiplyScalar(0.55)).add(new THREE.Vector3(0, 30, 16));
+        } else if (node.layer === 'problem') {
+          node.basePosition = anchor.basePosition.clone().add(new THREE.Vector3(42, -12, 42)).add(orbit.clone().multiplyScalar(0.35));
+        }
       }
+      node.stableBasePosition = node.basePosition.clone();
+      node.orbitParentId = chooseParentId(node);
+      node.position = node.basePosition.clone();
+    });
+
+    groups.forEach((node, idx) => {
+      const s = idx + 1;
+      const parent = node.orbitParentId ? nodeById.get(node.orbitParentId) : null;
+      if (!parent) return;
+      const radiusByLayer = {
+        device: 16,
+        entity: 9,
+        automation: 18,
+        scene: 20,
+        problem: 12,
+        person: 15,
+      };
+      const spreadByLayer = {
+        device: 10,
+        entity: 7,
+        automation: 10,
+        scene: 10,
+        problem: 6,
+        person: 7,
+      };
+      node.orbitType = 'parent';
+      node.orbitRadius = (radiusByLayer[node.layer] || 14) + Math.abs(jitter(s * 0.51, spreadByLayer[node.layer] || 8));
+      node.orbitSpeed = 0.18 + ((idx % 7) * 0.035) + (node.layer === 'entity' ? 0.08 : 0) + (node.layer === 'problem' ? 0.04 : 0);
+      node.orbitTilt = jitter(s * 0.83, 0.42);
+      node.orbitYOffset = jitter(s * 0.37, node.layer === 'entity' ? 6 : 9);
+      node.orbitPhase = node.phase + jitter(s * 0.19, 1.2);
+      const initialOffset = new THREE.Vector3(
+        Math.cos(node.orbitPhase) * node.orbitRadius,
+        node.orbitYOffset,
+        Math.sin(node.orbitPhase) * node.orbitRadius * (0.7 + Math.abs(node.orbitTilt) * 0.4)
+      );
+      node.basePosition = parent.basePosition.clone().add(initialOffset);
+      node.stableBasePosition = node.basePosition.clone();
       node.position = node.basePosition.clone();
     });
 
@@ -1174,16 +1249,32 @@ class HermesHACloudPanel extends HTMLElement {
     this.rings?.forEach((ring, idx) => { ring.rotation.y += (0.00005 + idx * 0.000015) * dt * (motionFactor || 0.15); ring.rotation.z += (0.00003 + idx * 0.00001) * dt * (motionFactor || 0.1); });
 
     const positions = this.pulsePoints.geometry.attributes.position?.array;
+    const livePositionById = new Map(this.nodeObjects.map((mesh) => [mesh.userData.node.id, mesh.position.clone()]));
     for (const mesh of this.nodeObjects) {
       const node = mesh.userData.node;
-      const targetBase = this.viewMode === 'timeline' ? node.timelinePosition : node.basePosition;
+      const orbitalBase = (() => {
+        if (this.viewMode === 'timeline') return node.timelinePosition;
+        if (node.orbitParentId) {
+          const parentPos = livePositionById.get(node.orbitParentId) || this.nodeMap.get(node.orbitParentId)?.position || node.stableBasePosition;
+          const angle = node.orbitPhase + t * node.orbitSpeed * motionFactor;
+          const ellipse = 0.72 + Math.abs(node.orbitTilt || 0) * 0.45;
+          return new THREE.Vector3(
+            parentPos.x + Math.cos(angle) * node.orbitRadius,
+            parentPos.y + node.orbitYOffset + Math.sin(angle * 0.8 + node.orbitTilt) * (node.orbitRadius * 0.08),
+            parentPos.z + Math.sin(angle) * node.orbitRadius * ellipse
+          );
+        }
+        return node.stableBasePosition || node.basePosition;
+      })();
+      node.basePosition = orbitalBase.clone();
       const animated = new THREE.Vector3(
-        targetBase.x + Math.cos(t * node.drift * motionFactor + node.phase) * node.wobble,
-        targetBase.y + Math.sin(t * node.drift * 1.6 * motionFactor + node.phase) * (node.wobble * 0.45),
-        targetBase.z + Math.sin(t * node.drift * 1.1 * motionFactor + node.phase * 0.7) * (node.wobble * 0.8)
+        orbitalBase.x + Math.cos(t * node.drift * motionFactor + node.phase) * node.wobble,
+        orbitalBase.y + Math.sin(t * node.drift * 1.6 * motionFactor + node.phase) * (node.wobble * 0.45),
+        orbitalBase.z + Math.sin(t * node.drift * 1.1 * motionFactor + node.phase * 0.7) * (node.wobble * 0.8)
       );
       node.position.lerp(animated, 0.12);
       mesh.position.copy(node.position);
+      livePositionById.set(node.id, mesh.position.clone());
       const active = this.hoveredNode?.id === node.id || this.selectedNode?.id === node.id;
       const scale = active ? node.size * 1.18 : node.size;
       mesh.scale.lerp(new THREE.Vector3(scale, scale, scale), 0.18);
