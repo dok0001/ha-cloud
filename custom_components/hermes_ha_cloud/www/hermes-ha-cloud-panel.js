@@ -17,6 +17,7 @@ class HermesHACloudPanel extends HTMLElement {
     this.presetProfile = 'galaxy';
     this.settingsCollapsed = false;
     this.drawerOpen = false;
+    this.mobileChromeHidden = false;
     this.mobileControlsCollapsed = false;
     this.mobileMiniMapVisible = false;
     this.mobileTab = 'cloud';
@@ -60,6 +61,7 @@ class HermesHACloudPanel extends HTMLElement {
     this.relationsEl = this.shadowRoot.getElementById('relations');
     this.mobileTabsEl = this.shadowRoot.getElementById('mobiletabs');
     this.mobileCloudActionsEl = this.shadowRoot.getElementById('mobile-cloud-actions');
+    this.mobileBottomNavEl = this.shadowRoot.getElementById('mobile-bottom-nav');
     this.mobileControlsToggleEl = this.shadowRoot.getElementById('mobile-controls-toggle');
     this.mobileMiniMapToggleEl = this.shadowRoot.getElementById('mobile-minimap-toggle');
     this.mobileControlsBodyEl = this.shadowRoot.getElementById('mobile-controls-body');
@@ -117,6 +119,7 @@ class HermesHACloudPanel extends HTMLElement {
       if (prefs.presetProfile) this.presetProfile = prefs.presetProfile;
       if (typeof prefs.settingsCollapsed === 'boolean') this.settingsCollapsed = prefs.settingsCollapsed;
       if (typeof prefs.drawerOpen === 'boolean') this.drawerOpen = prefs.drawerOpen;
+      if (typeof prefs.mobileChromeHidden === 'boolean') this.mobileChromeHidden = prefs.mobileChromeHidden;
       if (prefs.effects && typeof prefs.effects === 'object') this.effects = { ...this.effects, ...prefs.effects };
       this.autoDrift = this.motionMode === 'live' ? 0.0001 : this.motionMode === 'still' ? 0 : 0.00004;
     } catch {}
@@ -133,6 +136,7 @@ class HermesHACloudPanel extends HTMLElement {
         presetProfile: this.presetProfile,
         settingsCollapsed: this.settingsCollapsed,
         drawerOpen: this.drawerOpen,
+        mobileChromeHidden: this.mobileChromeHidden,
       }));
     } catch {}
   }
@@ -245,11 +249,43 @@ class HermesHACloudPanel extends HTMLElement {
           position: absolute;
           left: 12px;
           right: 12px;
-          bottom: 14px;
+          bottom: 76px;
           z-index: 5;
           gap: 8px;
           justify-content: center;
           pointer-events: auto;
+          transition: opacity 180ms ease, transform 180ms ease;
+        }
+        .mobile-bottom-nav {
+          display: none;
+          position: absolute;
+          left: 12px;
+          right: 12px;
+          bottom: 12px;
+          z-index: 6;
+          gap: 8px;
+          justify-content: space-between;
+          padding: 8px;
+          border: 1px solid rgba(140, 180, 255, 0.16);
+          border-radius: 18px;
+          background: rgba(7, 12, 24, 0.84);
+          backdrop-filter: blur(16px);
+          box-shadow: 0 18px 42px rgba(0,0,0,0.28);
+          transition: opacity 180ms ease, transform 180ms ease;
+        }
+        .mobile-bottom-nav button {
+          flex: 1 1 0;
+          border: 1px solid rgba(140, 180, 255, 0.16);
+          background: rgba(14, 21, 42, 0.84);
+          color: #eef4ff;
+          padding: 10px 8px;
+          border-radius: 14px;
+          cursor: pointer;
+          font: inherit;
+        }
+        .mobile-bottom-nav button.active {
+          background: rgba(36, 75, 164, 0.95);
+          border-color: rgba(125, 215, 255, 0.34);
         }
         .mobile-cloud-actions button {
           border: 1px solid rgba(140, 180, 255, 0.18); background: rgba(9, 15, 28, 0.84); color: #eef4ff;
@@ -379,7 +415,8 @@ class HermesHACloudPanel extends HTMLElement {
           }
           .mobile-toolbar,
           .mobile-tabs,
-          .mobile-cloud-actions {
+          .mobile-cloud-actions,
+          .mobile-bottom-nav {
             display: flex;
             flex-wrap: nowrap;
             overflow-x: auto;
@@ -484,10 +521,12 @@ class HermesHACloudPanel extends HTMLElement {
           }
           .scene-wrap[data-mobile-mode="cloud"] .hud {
             margin-top: 6px;
+            transition: opacity 180ms ease, transform 180ms ease;
           }
           .scene-wrap[data-mobile-mode="cloud"] .headline {
             padding: 8px 10px;
             background: linear-gradient(180deg, rgba(9,14,31,0.58), rgba(9,14,31,0.14));
+            transition: opacity 180ms ease, transform 180ms ease;
           }
           .scene-wrap[data-mobile-mode="cloud"] .sub,
           .scene-wrap[data-mobile-mode="cloud"] .drawer-launch .drawer-hint {
@@ -495,6 +534,15 @@ class HermesHACloudPanel extends HTMLElement {
           }
           .scene-wrap[data-mobile-mode="cloud"] .mobile-toolbar {
             margin-top: 8px;
+            transition: opacity 180ms ease, transform 180ms ease;
+          }
+          .scene-wrap[data-mobile-mode="cloud"][data-mobile-chrome="hidden"] .hud,
+          .scene-wrap[data-mobile-mode="cloud"][data-mobile-chrome="hidden"] .mobile-tabs,
+          .scene-wrap[data-mobile-mode="cloud"][data-mobile-chrome="hidden"] .mobile-cloud-actions,
+          .scene-wrap[data-mobile-mode="cloud"][data-mobile-chrome="hidden"] .mobile-bottom-nav {
+            opacity: 0;
+            transform: translateY(10px);
+            pointer-events: none;
           }
           aside[data-mobile-tab="cloud"] {
             padding-top: 0;
@@ -562,6 +610,12 @@ class HermesHACloudPanel extends HTMLElement {
             <button type="button" data-cloud-action="snapshot">📸 Snapshot</button>
             <button type="button" data-cloud-action="problem">⚠️ Problem</button>
             <button type="button" data-cloud-action="drawer">☰ Meny</button>
+          </div>
+          <div class="mobile-bottom-nav" id="mobile-bottom-nav">
+            <button type="button" data-bottom-tab="cloud">☁️ Moln</button>
+            <button type="button" data-bottom-tab="snapshot">📸 Snapshot</button>
+            <button type="button" data-bottom-tab="problem">⚠️ Problem</button>
+            <button type="button" data-bottom-tab="drawer">☰ Meny</button>
           </div>
           <div class="controls-drawer${this.drawerOpen ? ' open' : ''}" id="controls-drawer">
             <div class="drawer-head">
@@ -1107,6 +1161,7 @@ class HermesHACloudPanel extends HTMLElement {
     this.renderer.domElement.addEventListener('pointermove', (ev) => this.onPointerMove(ev));
     this.renderer.domElement.addEventListener('pointerleave', () => { this.hoveredNode = null; this.updateSidePanel(); });
     this.renderer.domElement.addEventListener('click', () => {
+      this.nudgeMobileChrome();
       if (this.hoveredNode?.id) this.selectNodeById(this.hoveredNode.id);
       else { this.selectedNode = { title: this.data?.core?.title || 'Hermes HA Cloud', type: 'core', layer: 'core', text: this.data?.core?.text || '' }; this.updateSidePanel(); }
     });
@@ -1174,6 +1229,24 @@ class HermesHACloudPanel extends HTMLElement {
         this.updateMobileUI();
       });
     });
+    this.mobileBottomNavEl?.querySelectorAll('button[data-bottom-tab]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const tab = button.dataset.bottomTab;
+        if (tab === 'drawer') {
+          this.drawerOpen = true;
+          this.mobileChromeHidden = false;
+          this.updateDrawerUI();
+          this.updateMobileUI();
+          this.savePreferences();
+          return;
+        }
+        this.mobileTab = tab || 'cloud';
+        this.windowPreset = this.mobileTab === 'cloud' ? 'overview' : this.mobileTab;
+        this.mobileChromeHidden = false;
+        this.updateControlPills();
+        this.updateMobileUI();
+      });
+    });
     this.mobileTabsEl?.querySelectorAll('button[data-tab]').forEach((button) => {
       button.addEventListener('click', () => {
         this.mobileTab = button.dataset.tab || 'cloud';
@@ -1182,6 +1255,7 @@ class HermesHACloudPanel extends HTMLElement {
           : this.mobileTab === 'snapshot'
             ? 'snapshot'
             : this.mobileTab;
+        this.mobileChromeHidden = false;
         this.updateControlPills();
         this.updateMobileUI();
       });
@@ -1211,8 +1285,10 @@ class HermesHACloudPanel extends HTMLElement {
     const isCloudMode = mobile && this.mobileTab === 'cloud';
     this.updateDrawerUI();
     this.sceneWrapEl?.setAttribute('data-mobile-mode', isCloudMode ? 'cloud' : 'panel');
+    this.sceneWrapEl?.setAttribute('data-mobile-chrome', this.mobileChromeHidden && isCloudMode ? 'hidden' : 'visible');
     this.mobileCloudActionsEl?.classList.toggle('active-cloud', isCloudMode);
     this.mobileCloudActionsEl && (this.mobileCloudActionsEl.style.display = isCloudMode ? 'flex' : 'none');
+    this.mobileBottomNavEl && (this.mobileBottomNavEl.style.display = mobile ? 'flex' : 'none');
     if (this.minimapWrapEl) this.minimapWrapEl.classList.toggle('hidden-mobile', mobile && !this.mobileMiniMapVisible && !isCloudMode);
     if (controlsBtn) controlsBtn.classList.toggle('active', mobile && this.drawerOpen);
     if (mapBtn) mapBtn.classList.toggle('active', mobile && (this.mobileMiniMapVisible || isCloudMode));
@@ -1221,6 +1297,11 @@ class HermesHACloudPanel extends HTMLElement {
       else aside.removeAttribute('data-mobile-tab');
     }
     tabs?.querySelectorAll('button[data-tab]').forEach((button) => button.classList.toggle('active', mobile && button.dataset.tab === this.mobileTab));
+    this.mobileBottomNavEl?.querySelectorAll('button[data-bottom-tab]').forEach((button) => {
+      const tab = button.dataset.bottomTab;
+      const active = tab === 'drawer' ? this.drawerOpen : mobile && tab === this.mobileTab;
+      button.classList.toggle('active', !!active);
+    });
     this.mobileCloudActionsEl?.querySelectorAll('button[data-cloud-action]').forEach((button) => {
       const action = button.dataset.cloudAction;
       const active = (action === 'snapshot' && this.mobileTab === 'snapshot') || (action === 'problem' && this.mobileTab === 'problem');
@@ -1228,8 +1309,20 @@ class HermesHACloudPanel extends HTMLElement {
     });
   }
 
+  nudgeMobileChrome() {
+    if (!this.isMobileLayout() || this.mobileTab !== 'cloud') return;
+    this.mobileChromeHidden = true;
+    this.updateMobileUI();
+    clearTimeout(this.mobileChromeTimer);
+    this.mobileChromeTimer = setTimeout(() => {
+      this.mobileChromeHidden = false;
+      this.updateMobileUI();
+    }, 1600);
+  }
+
   onPointerMove(ev) {
     if (!this.renderer || !this.camera) return;
+    this.nudgeMobileChrome();
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
     this.pointer.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
