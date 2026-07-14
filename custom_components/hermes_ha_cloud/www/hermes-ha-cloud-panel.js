@@ -12,6 +12,8 @@ class HermesHACloudPanel extends HTMLElement {
     this.viewMode = 'constellation';
     this.labelMode = 'normal';
     this.motionMode = 'calm';
+    this.effects = { orbitRings: true, nebulas: true, relationTraffic: true, autoZoom: true, cinematicGlow: true };
+    this.windowPreset = 'overview';
     this.mobileControlsCollapsed = false;
     this.mobileMiniMapVisible = false;
     this.mobileTab = 'snapshot';
@@ -59,6 +61,9 @@ class HermesHACloudPanel extends HTMLElement {
     this.labelModeEl = this.shadowRoot.getElementById('labelmodes');
     this.motionModeEl = this.shadowRoot.getElementById('motionmodes');
     this.viewModeEl = this.shadowRoot.getElementById('viewmodes');
+    this.effectsEl = this.shadowRoot.getElementById('effects');
+    this.windowPresetsEl = this.shadowRoot.getElementById('windowpresets');
+    this.panelAsideEl = this.shadowRoot.querySelector('aside');
     this.miniMapEl = this.shadowRoot.getElementById('minimap');
     this.miniMapCtx = this.miniMapEl?.getContext('2d');
     this.initThree();
@@ -176,10 +181,19 @@ class HermesHACloudPanel extends HTMLElement {
         .eyebrow { text-transform: uppercase; letter-spacing: 0.18em; font-size: 11px; color: #82b5ff; margin-bottom: 6px; }
         h1 { margin: 0; font-size: 30px; line-height: 1.1; }
         .sub { margin-top: 8px; max-width: 760px; color: #b0c0e8; font-size: 14px; line-height: 1.55; }
-        .controls { display: grid; grid-template-columns: minmax(180px, 1.3fr) repeat(3, auto); gap: 12px; margin-top: 14px; align-items: center; }
+        .controls {
+          grid-template-columns: minmax(180px, 1.3fr) repeat(3, auto);
+          gap: 12px;
+          margin-top: 14px;
+          align-items: center;
+        }
+        .controls-extended { margin-top: 12px; }
         .search input { width: 100%; border-radius: 999px; border: 1px solid var(--border); background: rgba(5, 9, 20, 0.9); color: #eef4ff; padding: 11px 14px; outline: none; }
         .search input::placeholder { color: #8294bf; }
         .control-group { display: flex; gap: 8px; flex-wrap: wrap; }
+        .control-stack { display: grid; gap: 10px; margin-top: 12px; }
+        .control-section { display: grid; gap: 8px; }
+        .control-section-title { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #8eaee6; }
         .control-pills button, .filters button, .row, .focus-row, .relation-btn {
           border: 1px solid rgba(140, 180, 255, 0.16); background: rgba(14, 21, 42, 0.84); color: #eef4ff;
           padding: 9px 12px; border-radius: 999px; cursor: pointer; transition: 140ms ease; font: inherit;
@@ -193,6 +207,11 @@ class HermesHACloudPanel extends HTMLElement {
         canvas#minimap { width: 180px; height: 180px; display: block; border-radius: 18px; background: radial-gradient(circle at 50% 50%, rgba(21, 31, 58, 0.85), rgba(6, 10, 23, 0.96)); border: 1px solid rgba(146, 186, 255, 0.12); box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28); }
         .minimap-copy { margin-top: 8px; text-align: center; font-size: 11px; color: #90a5d6; }
         aside { overflow: auto; padding: 14px; display: grid; gap: 12px; background: linear-gradient(180deg, rgba(5,9,20,0.9), rgba(4,7,16,0.96)); }
+        aside[data-window-preset="overview"] .card[data-panel] { display: block; }
+        aside[data-window-preset="relations"] .card[data-panel]:not([data-panel="relations"]) { display: none; }
+        aside[data-window-preset="focus"] .card[data-panel]:not([data-panel="focus"]) { display: none; }
+        aside[data-window-preset="problem"] .card[data-panel]:not([data-panel="problem"]) { display: none; }
+        aside[data-window-preset="snapshot"] .card[data-panel]:not([data-panel="snapshot"]) { display: none; }
         .card { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.18); }
         .card h2, .card h3 { margin: 0 0 8px 0; }
         .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
@@ -399,6 +418,16 @@ class HermesHACloudPanel extends HTMLElement {
                 <div class="control-group control-pills" id="labelmodes"></div>
                 <div class="control-group control-pills" id="motionmodes"></div>
               </div>
+              <div class="control-stack controls-extended">
+                <div class="control-section">
+                  <div class="control-section-title">Effekter</div>
+                  <div class="control-group control-pills" id="effects"></div>
+                </div>
+                <div class="control-section">
+                  <div class="control-section-title">Fönster</div>
+                  <div class="control-group control-pills" id="windowpresets"></div>
+                </div>
+              </div>
               <div class="filters" id="filters"></div>
               <div class="legend">
                 <span>Add-ons</span>
@@ -538,6 +567,7 @@ class HermesHACloudPanel extends HTMLElement {
       this.selectedNode = { title: this.data.core.title, type: 'core', layer: 'core', group: 'core', text: this.data.core.text, meta: `${this.data.meta.integration_count} integrationer · ${this.data.meta.link_count} kopplingar` };
       this.updateFilters();
       this.applyVisibility();
+      this.applyEffects();
       this.updateSidePanel();
       this.updateProblemList();
       this.updateFocusLane();
@@ -907,6 +937,8 @@ class HermesHACloudPanel extends HTMLElement {
     this.mobileTabsEl?.querySelectorAll('button[data-tab]').forEach((button) => {
       button.addEventListener('click', () => {
         this.mobileTab = button.dataset.tab || 'snapshot';
+        this.windowPreset = this.mobileTab === 'snapshot' ? 'snapshot' : this.mobileTab;
+        this.updateControlPills();
         this.updateMobileUI();
       });
     });
@@ -946,21 +978,59 @@ class HermesHACloudPanel extends HTMLElement {
     this.updateSidePanel();
   }
 
+  updateWindowPreset() {
+    if (!this.panelAsideEl) return;
+    const preset = this.windowPreset || 'overview';
+    this.panelAsideEl.setAttribute('data-window-preset', preset);
+    if (this.isMobileLayout()) {
+      const mobileMap = { overview: 'snapshot', snapshot: 'snapshot', relations: 'relations', focus: 'focus', problem: 'problem' };
+      this.mobileTab = mobileMap[preset] || this.mobileTab;
+    }
+  }
+
+  applyEffects() {
+    this.orbitRingObjects?.forEach((ring) => { ring.visible = !!this.effects.orbitRings; });
+    this.nebulaObjects?.forEach((nebula) => { nebula.visible = !!this.effects.nebulas; });
+    if (this.pulsePoints) this.pulsePoints.visible = !!this.effects.relationTraffic;
+    if (this.coreGlow) this.coreGlow.visible = !!this.effects.cinematicGlow;
+    if (this.coreShell) this.coreShell.visible = !!this.effects.cinematicGlow;
+    this.rings?.forEach((ring) => { ring.visible = !!this.effects.cinematicGlow; });
+    this.nodeObjects?.forEach((mesh) => {
+      if (mesh.userData.starGlow) mesh.userData.starGlow.visible = !!this.effects.cinematicGlow;
+      if (mesh.userData.halo) mesh.userData.halo.visible = true;
+    });
+  }
+
   updateControlPills() {
-    const build = (host, active, entries, onPick) => {
+    const build = (host, active, entries, onPick, multiple = false) => {
       if (!host) return;
       host.innerHTML = '';
       entries.forEach(([value, label]) => {
         const button = document.createElement('button');
         button.textContent = label;
-        if (active === value) button.classList.add('active');
+        const isActive = multiple ? !!active[value] : active === value;
+        if (isActive) button.classList.add('active');
         button.addEventListener('click', () => onPick(value));
         host.appendChild(button);
       });
     };
-    build(this.viewModeEl, this.viewMode, [['constellation', 'Constellation'], ['timeline', 'Timeline']], (value) => { this.viewMode = value; this.drawMiniMap(); });
+    build(this.viewModeEl, this.viewMode, [['constellation', 'Constellation'], ['timeline', 'Timeline']], (value) => { this.viewMode = value; this.updateControlPills(); this.drawMiniMap(); });
     build(this.labelModeEl, this.labelMode, [['minimal', 'Minimal labels'], ['normal', 'Normal'], ['detailed', 'Detailed']], (value) => { this.labelMode = value; this.updateControlPills(); this.updateFocusLane(); });
     build(this.motionModeEl, this.motionMode, [['calm', 'Motion calm'], ['live', 'Motion live'], ['still', 'Motion still']], (value) => { this.motionMode = value; this.autoDrift = value === 'live' ? 0.0001 : value === 'still' ? 0 : 0.00004; this.updateControlPills(); });
+    build(this.effectsEl, this.effects, [['orbitRings', 'Orbitbanor'], ['nebulas', 'Nebulosor'], ['relationTraffic', 'Länktrafik'], ['autoZoom', 'Auto-zoom'], ['cinematicGlow', 'Cinematic glow']], (value) => {
+      this.effects[value] = !this.effects[value];
+      this.applyEffects();
+      this.updateControlPills();
+      this.drawMiniMap();
+    }, true);
+    build(this.windowPresetsEl, this.windowPreset, [['overview', 'Översikt'], ['snapshot', 'Snapshot'], ['relations', 'Kopplingar'], ['focus', 'Fokus'], ['problem', 'Problem']], (value) => {
+      this.windowPreset = value;
+      this.updateWindowPreset();
+      this.updateMobileUI();
+      if (this.panelAsideEl && !this.isMobileLayout()) this.panelAsideEl.scrollTo({ top: 0, behavior: 'smooth' });
+      this.updateControlPills();
+    });
+    this.updateWindowPreset();
   }
 
   updateFilters() {
@@ -1059,6 +1129,7 @@ class HermesHACloudPanel extends HTMLElement {
   }
 
   focusOnNode(node) {
+    if (!this.effects?.autoZoom) return;
     if (!node?.id || !this.camera || !this.controls) return;
     const mesh = this.nodeMap.get(node.id);
     if (!mesh) return;
