@@ -1,5 +1,6 @@
 import * as THREE from './vendor/three.module.js';
 import { OrbitControls } from './vendor/OrbitControls.js';
+import { Engine, Scene, ArcRotateCamera, HemisphericLight, PointLight, GlowLayer, HighlightLayer, MeshBuilder, StandardMaterial, Color3, Color4, Vector3 } from './vendor/babylon.module.js';
 
 class HermesHACloudPanel extends HTMLElement {
   constructor() {
@@ -29,6 +30,9 @@ class HermesHACloudPanel extends HTMLElement {
     this.focusFilterIds = null;
     this.pointer = new THREE.Vector2();
     this.raycaster = new THREE.Raycaster();
+    const params = new URLSearchParams(window.location.search);
+    this.renderEngine = params.get('ha_cloud_renderer') === 'babylon' ? 'babylon' : 'three';
+    this.babylon = null;
     this.nodeObjects = [];
     this.nodeMap = new Map();
     this.labelEls = new Map();
@@ -101,7 +105,7 @@ class HermesHACloudPanel extends HTMLElement {
     this.roomsWorkspaceEl = this.shadowRoot.getElementById('rooms-workspace');
     this.miniMapEl = this.shadowRoot.getElementById('minimap');
     this.miniMapCtx = this.miniMapEl?.getContext('2d');
-    this.initThree();
+    this.initRenderer();
     this.installEvents();
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(this.sceneHost);
@@ -112,10 +116,7 @@ class HermesHACloudPanel extends HTMLElement {
   disconnectedCallback() {
     if (this.raf) cancelAnimationFrame(this.raf);
     if (this.resizeObserver) this.resizeObserver.disconnect();
-    if (this.renderer) {
-      this.renderer.dispose();
-      this.renderer.domElement.remove();
-    }
+    this.disposeRenderer();
   }
 
   escapeHtml(value) {
@@ -1140,6 +1141,249 @@ class HermesHACloudPanel extends HTMLElement {
     `;
   }
 
+  initRenderer() {
+    if (this.renderEngine === 'babylon') return this.initBabylon();
+    return this.initThree();
+  }
+
+  disposeRenderer() {
+    if (this.renderer) {
+      this.renderer.dispose();
+      this.renderer.domElement.remove();
+      this.renderer = null;
+    }
+    if (this.babylon) {
+      try { this.babylon.scene?.dispose(); } catch {}
+      try { this.babylon.engine?.dispose(); } catch {}
+      try { this.babylon.canvas?.remove(); } catch {}
+      this.babylon = null;
+    }
+  }
+
+  getActiveCanvas() {
+    return this.renderEngine === 'babylon' ? this.babylon?.canvas : this.renderer?.domElement;
+  }
+
+  initBabylon() {
+    const canvas = document.createElement('canvas');
+    canvas.classList.add('webgl');
+    this.sceneHost.appendChild(canvas);
+    const engine = new Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true, antialias: true });
+    if (engine.setHardwareScalingLevel) engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio || 1, 2));
+    const scene = new Scene(engine);
+    scene.clearColor = new Color4(0.015, 0.03, 0.085, 1);
+    const camera = new ArcRotateCamera('ha-cloud-babylon-cam', 0.78, 1.06, 330, new Vector3(0, 0, 0), scene);
+    camera.lowerRadiusLimit = 120;
+    camera.upperRadiusLimit = 620;
+    camera.wheelDeltaPercentage = 0.01;
+    camera.panningSensibility = 0;
+    camera.attachControl(canvas, true);
+    const hemi = new HemisphericLight('ha-cloud-hemi', new Vector3(0, 1, 0), scene);
+    hemi.intensity = 0.9;
+    const key = new PointLight('ha-cloud-key', new Vector3(0, 44, 38), scene);
+    key.intensity = 26;
+    key.range = 1200;
+    const fill = new PointLight('ha-cloud-fill', new Vector3(-200, 90, 230), scene);
+    fill.intensity = 12;
+    fill.range = 1200;
+    const rim = new PointLight('ha-cloud-rim', new Vector3(210, -42, -180), scene);
+    rim.intensity = 7;
+    rim.range = 980;
+    const glowLayer = new GlowLayer('ha-cloud-glow', scene);
+    glowLayer.intensity = 0.9;
+    const highlightLayer = new HighlightLayer('ha-cloud-highlight', scene);
+    highlightLayer.innerGlow = false;
+    highlightLayer.outerGlow = true;
+    highlightLayer.blurHorizontalSize = 1.2;
+    highlightLayer.blurVerticalSize = 1.2;
+    const selectedLight = new PointLight('ha-cloud-selected-light', new Vector3(0, 0, 0), scene);
+    selectedLight.intensity = 0;
+    selectedLight.range = 140;
+    this.babylon = { canvas, engine, scene, camera, hemi, key, fill, rim, glowLayer, highlightLayer, selectedLight };
+    engine.runRenderLoop(() => scene.render());
+  }
+
+  babylonColor3FromInt(color) {
+    return Color3.FromInts((color >> 16) & 255, (color >> 8) & 255, color & 255);
+  }
+
+  createBabylonCoreMaterial(node) {
+    const color = this.babylonColor3FromInt(this.colorFor(node));
+    const material = new StandardMaterial(`orb-core-${node.id}`, this.babylon.scene);
+    material.diffuseColor = color.scale(node.layer === 'area' ? 0.22 : 0.14);
+    material.specularColor = color.scale(0.18);
+    material.emissiveColor = color.scale(node.layer === 'area' ? 1.3 : node.severity === 'critical' ? 1.55 : 0.95);
+    material.alpha = Math.min(0.98, node.alpha || 0.9);
+    return material;
+  }
+
+  createBabylonShellMaterial(node) {
+    const color = this.babylonColor3FromInt(this.colorFor(node));
+    const material = new StandardMaterial(`orb-shell-${node.id}`, this.babylon.scene);
+    material.diffuseColor = color.scale(0.04);
+    material.specularColor = Color3.Black();
+    material.emissiveColor = color.scale(node.layer === 'area' ? 0.7 : node.severity === 'critical' ? 0.9 : 0.35);
+    material.alpha = node.layer === 'area' ? 0.18 : node.severity === 'critical' ? 0.16 : 0.11;
+    material.backFaceCulling = false;
+    return material;
+  }
+
+  rebuildBabylonScene() {
+    if (!this.babylon?.scene) return;
+    this.nodeObjects.forEach((mesh) => {
+      try { mesh.userData?.shell?.dispose(); } catch {}
+      try { mesh.userData?.heroLight?.dispose(); } catch {}
+      try { this.babylon.highlightLayer?.removeMesh(mesh); } catch {}
+      try { mesh.dispose(); } catch {}
+    });
+    this.nodeObjects = [];
+    this.nodeMap = new Map();
+    this.labelEls = new Map();
+    this.labelsEl.innerHTML = '';
+    this.orbitRingObjects = [];
+    this.nebulaObjects = [];
+    this.lines = null;
+    for (const node of this.nodes) {
+      const mesh = MeshBuilder.CreateSphere(`ha-cloud-orb-${node.id}`, { diameter: 2, segments: node.layer === 'area' ? 18 : 12 }, this.babylon.scene);
+      mesh.material = this.createBabylonCoreMaterial(node);
+      mesh.position = new Vector3(node.position.x, node.position.y, node.position.z);
+      mesh.scaling = new Vector3(node.size, node.size, node.size);
+      mesh.userData = { node, baseColor: this.babylonColor3FromInt(this.colorFor(node)), highlighted: false };
+      mesh.visible = true;
+      const shell = MeshBuilder.CreateSphere(`ha-cloud-orb-shell-${node.id}`, { diameter: 2.6, segments: 12 }, this.babylon.scene);
+      shell.material = this.createBabylonShellMaterial(node);
+      shell.parent = mesh;
+      shell.position = Vector3.Zero();
+      shell.isPickable = false;
+      shell.scaling = new Vector3(node.layer === 'area' ? 1.95 : node.severity === 'critical' ? 1.7 : 1.45, node.layer === 'area' ? 1.95 : node.severity === 'critical' ? 1.7 : 1.45, node.layer === 'area' ? 1.95 : node.severity === 'critical' ? 1.7 : 1.45);
+      mesh.userData.shell = shell;
+      if (node.layer === 'area' || node.severity === 'critical') {
+        const heroLight = new PointLight(`ha-cloud-orb-light-${node.id}`, new Vector3(0, 0, 0), this.babylon.scene);
+        heroLight.parent = mesh;
+        heroLight.diffuse = mesh.userData.baseColor;
+        heroLight.intensity = 0;
+        heroLight.range = Math.max(40, node.size * 14);
+        mesh.userData.heroLight = heroLight;
+      }
+      this.nodeObjects.push(mesh);
+      this.nodeMap.set(node.id, mesh);
+      this.labelsEl.appendChild(this.createLabelElement(node));
+    }
+  }
+
+  pickBabylonNode(clientX, clientY) {
+    if (!this.babylon?.scene || !this.babylon?.canvas) return null;
+    const rect = this.babylon.canvas.getBoundingClientRect();
+    const pick = this.babylon.scene.pick(clientX - rect.left, clientY - rect.top);
+    const mesh = pick?.pickedMesh;
+    if (!mesh?.userData?.node || mesh.isEnabled?.() === false || mesh.visible === false) return null;
+    return mesh.userData.node;
+  }
+
+  onBabylonPointerMove(ev) {
+    this.nudgeMobileChrome();
+    this.hoveredNode = this.pickBabylonNode(ev.clientX, ev.clientY);
+    this.updateSidePanel();
+  }
+
+  onBabylonClick(ev) {
+    this.nudgeMobileChrome();
+    const hit = this.pickBabylonNode(ev.clientX, ev.clientY);
+    if (hit?.id) this.selectNodeById(hit.id);
+    else {
+      this.selectedNode = { title: this.data?.core?.title || 'Hermes HA Cloud', type: 'core', layer: 'core', text: this.data?.core?.text || '' };
+      this.updateSidePanel();
+    }
+  }
+
+  syncBabylonHighlights() {
+    if (!this.babylon?.highlightLayer) return;
+    const focusId = this.selectedNode?.id || this.hoveredNode?.id || null;
+    this.nodeObjects.forEach((mesh) => {
+      const node = mesh.userData?.node;
+      const isActive = !!focusId && focusId === node?.id;
+      if (isActive && !mesh.userData.highlighted) {
+        this.babylon.highlightLayer.addMesh(mesh, mesh.userData.baseColor);
+        mesh.userData.highlighted = true;
+      } else if (!isActive && mesh.userData.highlighted) {
+        this.babylon.highlightLayer.removeMesh(mesh);
+        mesh.userData.highlighted = false;
+      }
+    });
+    const focusMesh = focusId ? this.nodeMap.get(focusId) : null;
+    if (focusMesh?.position && this.babylon.selectedLight) {
+      this.babylon.selectedLight.position = focusMesh.position.clone();
+      this.babylon.selectedLight.diffuse = focusMesh.userData.baseColor;
+      this.babylon.selectedLight.intensity = this.selectedNode ? 12 : 7;
+    } else if (this.babylon.selectedLight) {
+      this.babylon.selectedLight.intensity = 0;
+    }
+  }
+
+  focusOnBabylonNode(node) {
+    if (!this.effects?.autoZoom || !node?.id || !this.babylon?.camera) return;
+    const mesh = this.nodeMap.get(node.id);
+    if (!mesh) return;
+    const target = new Vector3(mesh.position.x, mesh.position.y, mesh.position.z);
+    this.babylon.camera.setTarget(target);
+    this.babylon.camera.radius = Math.min(420, Math.max(140, node.size * 28 + (node.layer === 'area' ? 90 : 140)));
+  }
+
+  animateBabylon(time) {
+    const dt = Math.min(32, time - this.lastTime);
+    this.lastTime = time;
+    const t = time * 0.001;
+    const motionFactor = this.motionMode === 'live' ? 1.9 : this.motionMode === 'still' ? 0 : 1;
+    const focusNode = this.selectedNode || this.hoveredNode;
+    const lineageIds = this.getLineageIds(focusNode);
+    const livePositionById = new Map(this.nodes.map((node) => [node.id, node.position.clone()]));
+    for (const mesh of this.nodeObjects) {
+      const node = mesh.userData.node;
+      const orbitalBase = (() => {
+        if (this.viewMode === 'timeline') return node.timelinePosition;
+        if (node.orbitParentId) {
+          const parentPos = livePositionById.get(node.orbitParentId) || this.nodeMap.get(node.orbitParentId)?.userData?.node?.position || node.stableBasePosition;
+          const angle = node.orbitPhase + t * node.orbitSpeed * motionFactor;
+          const ellipse = 0.72 + Math.abs(node.orbitTilt || 0) * 0.45;
+          return new THREE.Vector3(
+            parentPos.x + Math.cos(angle) * node.orbitRadius,
+            parentPos.y + node.orbitYOffset + Math.sin(angle * 0.8 + node.orbitTilt) * (node.orbitRadius * 0.08),
+            parentPos.z + Math.sin(angle) * node.orbitRadius * ellipse
+          );
+        }
+        return node.stableBasePosition || node.basePosition;
+      })();
+      node.basePosition = orbitalBase.clone();
+      const animated = new THREE.Vector3(
+        orbitalBase.x + Math.cos(t * node.drift * motionFactor + node.phase) * node.wobble,
+        orbitalBase.y + Math.sin(t * node.drift * 1.6 * motionFactor + node.phase) * (node.wobble * 0.45),
+        orbitalBase.z + Math.sin(t * node.drift * 1.1 * motionFactor + node.phase * 0.7) * (node.wobble * 0.8)
+      );
+      node.position.lerp(animated, 0.12);
+      mesh.position.copyFromFloats(node.position.x, node.position.y, node.position.z);
+      livePositionById.set(node.id, node.position.clone());
+      const active = this.hoveredNode?.id === node.id || this.selectedNode?.id === node.id;
+      const inLineage = lineageIds.has(node.id);
+      const scale = active ? node.size * 1.22 : inLineage ? node.size * 1.08 : node.size;
+      const currentScale = mesh.scaling?.x || node.size;
+      const nextScale = currentScale + (scale - currentScale) * 0.18;
+      mesh.scaling.copyFromFloats(nextScale, nextScale, nextScale);
+      const emissiveScale = active ? 1.75 : inLineage ? 1.28 : node.layer === 'area' ? 1.2 : node.severity === 'critical' ? 1.35 : 0.95;
+      mesh.material.emissiveColor = mesh.userData.baseColor.scale(emissiveScale);
+      mesh.material.alpha = active ? 1 : inLineage ? Math.min(0.99, node.alpha + 0.12) : Math.min(0.98, node.alpha);
+      if (mesh.userData.shell) {
+        mesh.userData.shell.isVisible = !!this.effects.cinematicGlow;
+        mesh.userData.shell.material.alpha = active ? 0.22 : inLineage ? 0.16 : node.layer === 'area' ? 0.18 : node.severity === 'critical' ? 0.16 : 0.11;
+      }
+      if (mesh.userData.heroLight) mesh.userData.heroLight.intensity = active ? 18 : node.severity === 'critical' ? 9 : node.layer === 'area' ? 6 : 0;
+      mesh.visibility = mesh.visible === false ? 0 : 1;
+    }
+    this.syncBabylonHighlights();
+    this.updateLabelAnchors();
+    this.drawMiniMap();
+    this.raf = requestAnimationFrame((next) => this.animate(next));
+  }
+
   initThree() {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x040916);
@@ -1420,6 +1664,7 @@ class HermesHACloudPanel extends HTMLElement {
   }
 
   rebuildScene() {
+    if (this.renderEngine === 'babylon') return this.rebuildBabylonScene();
     while (this.graphRoot.children.length) {
       const child = this.graphRoot.children.pop();
       child.geometry?.dispose?.();
@@ -1573,13 +1818,20 @@ class HermesHACloudPanel extends HTMLElement {
   }
 
   installEvents() {
-    this.renderer.domElement.addEventListener('pointermove', (ev) => this.onPointerMove(ev));
-    this.renderer.domElement.addEventListener('pointerleave', () => { this.hoveredNode = null; this.updateSidePanel(); });
-    this.renderer.domElement.addEventListener('click', () => {
-      this.nudgeMobileChrome();
-      if (this.hoveredNode?.id) this.selectNodeById(this.hoveredNode.id);
-      else { this.selectedNode = { title: this.data?.core?.title || 'Hermes HA Cloud', type: 'core', layer: 'core', text: this.data?.core?.text || '' }; this.updateSidePanel(); }
-    });
+    const surface = this.getActiveCanvas();
+    if (this.renderEngine === 'babylon') {
+      surface?.addEventListener('pointermove', (ev) => this.onBabylonPointerMove(ev));
+      surface?.addEventListener('pointerleave', () => { this.hoveredNode = null; this.updateSidePanel(); });
+      surface?.addEventListener('click', (ev) => this.onBabylonClick(ev));
+    } else {
+      this.renderer.domElement.addEventListener('pointermove', (ev) => this.onPointerMove(ev));
+      this.renderer.domElement.addEventListener('pointerleave', () => { this.hoveredNode = null; this.updateSidePanel(); });
+      this.renderer.domElement.addEventListener('click', () => {
+        this.nudgeMobileChrome();
+        if (this.hoveredNode?.id) this.selectNodeById(this.hoveredNode.id);
+        else { this.selectedNode = { title: this.data?.core?.title || 'Hermes HA Cloud', type: 'core', layer: 'core', text: this.data?.core?.text || '' }; this.updateSidePanel(); }
+      });
+    }
     this.searchEl?.addEventListener('input', (ev) => {
       this.searchQuery = String(ev.target.value || '').trim().toLowerCase();
       this.applyVisibility();
@@ -1799,6 +2051,12 @@ class HermesHACloudPanel extends HTMLElement {
   }
 
   applyEffects() {
+    if (this.renderEngine === 'babylon') {
+      this.nodeObjects?.forEach((mesh) => {
+        if (mesh.userData?.shell) mesh.userData.shell.isVisible = !!this.effects.cinematicGlow && mesh.visible !== false;
+      });
+      return;
+    }
     this.orbitRingObjects?.forEach((ring) => { ring.visible = !!this.effects.orbitRings; });
     this.nebulaObjects?.forEach((nebula) => { nebula.visible = !!this.effects.nebulas; });
     if (this.pulsePoints) this.pulsePoints.visible = !!this.effects.relationTraffic;
@@ -1929,7 +2187,13 @@ class HermesHACloudPanel extends HTMLElement {
     for (const mesh of this.nodeObjects) {
       const node = mesh.userData.node;
       const focusAllowed = !this.focusFilterIds || this.focusFilterIds.has(node.id);
-      mesh.visible = this.modeMatches(node) && this.matchesSearch(node) && focusAllowed;
+      const visible = this.modeMatches(node) && this.matchesSearch(node) && focusAllowed;
+      mesh.visible = visible;
+      if (this.renderEngine === 'babylon') {
+        mesh.setEnabled?.(visible);
+        mesh.visibility = visible ? 1 : 0;
+        if (mesh.userData?.shell) mesh.userData.shell.isVisible = visible && !!this.effects.cinematicGlow;
+      }
       const label = this.labelEls.get(node.id);
       if (label) label.style.opacity = '0';
     }
@@ -2122,6 +2386,7 @@ class HermesHACloudPanel extends HTMLElement {
   }
 
   focusOnNode(node) {
+    if (this.renderEngine === 'babylon') return this.focusOnBabylonNode(node);
     if (!this.effects?.autoZoom) return;
     if (!node?.id || !this.camera || !this.controls) return;
     const mesh = this.nodeMap.get(node.id);
@@ -2445,6 +2710,10 @@ class HermesHACloudPanel extends HTMLElement {
   }
 
   updateLabelAnchors() {
+    if (this.renderEngine === 'babylon') {
+      this.labelEls?.forEach((el) => { el.style.opacity = '0'; el.classList.remove('active'); });
+      return;
+    }
     if (!this.camera || !this.width || !this.height) return;
     const preferred = this.visibleNodesSorted();
     const chosenIds = new Set();
@@ -2522,9 +2791,16 @@ class HermesHACloudPanel extends HTMLElement {
   }
 
   resize() {
-    if (!this.sceneHost || !this.renderer || !this.camera) return;
+    if (!this.sceneHost) return;
     const rect = this.sceneHost.getBoundingClientRect();
     this.width = rect.width; this.height = rect.height;
+    if (this.renderEngine === 'babylon') {
+      this.babylon?.engine?.resize();
+      this.updateMobileUI();
+      this.drawMiniMap();
+      return;
+    }
+    if (!this.renderer || !this.camera) return;
     this.camera.aspect = rect.width / rect.height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(rect.width, rect.height, false);
@@ -2533,6 +2809,7 @@ class HermesHACloudPanel extends HTMLElement {
   }
 
   animate(time) {
+    if (this.renderEngine === 'babylon') return this.animateBabylon(time);
     const dt = Math.min(32, time - this.lastTime);
     this.lastTime = time;
     const t = time * 0.001;
