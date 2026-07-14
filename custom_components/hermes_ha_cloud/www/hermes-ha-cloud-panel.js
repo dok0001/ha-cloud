@@ -21,7 +21,7 @@ class HermesHACloudPanel extends HTMLElement {
     this.mobileControlsCollapsed = false;
     this.mobileMiniMapVisible = false;
     this.mobileTab = 'cloud';
-    this.sidebarView = 'panels';
+    this.sidebarView = 'rooms';
     this.selectedNode = null;
     this.hoveredNode = null;
     this.searchQuery = '';
@@ -65,6 +65,9 @@ class HermesHACloudPanel extends HTMLElement {
     this.mobileBottomNavEl = this.shadowRoot.getElementById('mobile-bottom-nav');
     this.desktopHeaderTabsEl = this.shadowRoot.getElementById('desktop-header-tabs');
     this.sidebarTabsDesktopEl = this.shadowRoot.getElementById('sidebartabs');
+    this.sidebarRoomsEl = this.shadowRoot.getElementById('sidebar-rooms');
+    this.sidebarDevicesEl = this.shadowRoot.getElementById('sidebar-devices');
+    this.sidebarProblemsEl = this.shadowRoot.getElementById('sidebar-problems');
     this.mobileControlsToggleEl = this.shadowRoot.getElementById('mobile-controls-toggle');
     this.mobileMiniMapToggleEl = this.shadowRoot.getElementById('mobile-minimap-toggle');
     this.mobileControlsBodyEl = this.shadowRoot.getElementById('mobile-controls-body');
@@ -164,6 +167,7 @@ class HermesHACloudPanel extends HTMLElement {
       if (typeof prefs.drawerOpen === 'boolean') this.drawerOpen = prefs.drawerOpen;
       if (typeof prefs.mobileChromeHidden === 'boolean') this.mobileChromeHidden = prefs.mobileChromeHidden;
       if (prefs.sidebarView) this.sidebarView = prefs.sidebarView;
+      if (!['rooms', 'devices', 'problems', 'types'].includes(this.sidebarView)) this.sidebarView = 'rooms';
       if (prefs.effects && typeof prefs.effects === 'object') this.effects = { ...this.effects, ...prefs.effects };
       this.autoDrift = this.motionMode === 'live' ? 0.0001 : this.motionMode === 'still' ? 0 : 0.00004;
     } catch {}
@@ -461,9 +465,10 @@ class HermesHACloudPanel extends HTMLElement {
           margin-top: -2px;
         }
         .sidebar-tabs-desktop {
-          display: flex;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
           padding: 8px;
-          gap: 4px;
+          gap: 6px;
           background: rgba(0,0,0,0.18);
           border-bottom: 1px solid rgba(148, 163, 184, 0.08);
         }
@@ -493,15 +498,17 @@ class HermesHACloudPanel extends HTMLElement {
           gap: 10px;
           padding: 12px;
         }
+        .sidebar-section-card { display: none; }
+        aside[data-sidebar-view="rooms"] .sidebar-section-card[data-sidebar-section="rooms"],
+        aside[data-sidebar-view="devices"] .sidebar-section-card[data-sidebar-section="devices"],
+        aside[data-sidebar-view="problems"] .sidebar-section-card[data-sidebar-section="problems"],
+        aside[data-sidebar-view="types"] .sidebar-section-card[data-sidebar-section="types"] { display: block; }
         .sidebar-footer {
           padding: 10px 14px 14px;
           border-top: 1px solid rgba(148, 163, 184, 0.08);
           color: #94a3b8;
           font-size: 11px;
         }
-        aside[data-sidebar-view="legend"] .card[data-panel] { display: none; }
-        aside[data-sidebar-view="legend"] .sidebar-legend-card { display: block; }
-        aside[data-sidebar-view="panels"] .sidebar-legend-card { display: none; }
         aside[data-window-preset="overview"] .card[data-panel] { display: block; }
         aside[data-window-preset="relations"] .card[data-panel]:not([data-panel="relations"]) { display: none; }
         aside[data-window-preset="focus"] .card[data-panel]:not([data-panel="focus"]) { display: none; }
@@ -668,7 +675,8 @@ class HermesHACloudPanel extends HTMLElement {
           .desktop-header,
           .sidebar-brand,
           .sidebar-tabs-desktop,
-          .sidebar-footer {
+          .sidebar-footer,
+          .sidebar-section-card {
             display: none;
           }
           aside {
@@ -778,8 +786,10 @@ class HermesHACloudPanel extends HTMLElement {
             <div class="sidebar-subtitle">home assistant observatory</div>
           </div>
           <div class="sidebar-tabs-desktop" id="sidebartabs">
-            <button type="button" data-sidebar-view="panels">Panels</button>
-            <button type="button" data-sidebar-view="legend">Node Types</button>
+            <button type="button" data-sidebar-view="rooms">Rooms</button>
+            <button type="button" data-sidebar-view="devices">Devices</button>
+            <button type="button" data-sidebar-view="problems">Problems</button>
+            <button type="button" data-sidebar-view="types">Node Types</button>
           </div>
           <div class="sidebar-body">
             <div class="mobile-tabs" id="mobiletabs">
@@ -788,6 +798,36 @@ class HermesHACloudPanel extends HTMLElement {
               <button type="button" data-tab="relations">Kopplingar</button>
               <button type="button" data-tab="focus">Fokus</button>
               <button type="button" data-tab="problem">Problem</button>
+            </div>
+            <div class="card sidebar-section-card" data-sidebar-section="rooms">
+              <h3>Rooms</h3>
+              <div class="microcopy">Snabbval för områden/system, inspirerat av ArcRift's vänsterpanel.</div>
+              <div class="list" id="sidebar-rooms"></div>
+            </div>
+            <div class="card sidebar-section-card" data-sidebar-section="devices">
+              <h3>Devices</h3>
+              <div class="microcopy">Viktigaste enheterna just nu, prioriterat efter synlighet och vikt.</div>
+              <div class="list" id="sidebar-devices"></div>
+            </div>
+            <div class="card sidebar-section-card" data-sidebar-section="problems">
+              <h3>Problems</h3>
+              <div class="microcopy">Problemfokuserad lista med unavailable/unknown-fall och kritiska noder.</div>
+              <div class="list" id="sidebar-problems"></div>
+            </div>
+            <div class="card sidebar-section-card" data-sidebar-section="types">
+              <h3>Node types</h3>
+              <div class="microcopy">ArcRift-inspirerad legendvy för att snabbt förstå lagren i HA-kartan.</div>
+              <div class="legend">
+                <span>Add-ons</span>
+                <span>Integrationer</span>
+                <span>Areas</span>
+                <span>Enheter</span>
+                <span>Entiteter</span>
+                <span>Automationer</span>
+                <span>Scener</span>
+                <span>Personer</span>
+                <span class="critical">Unavailable / problem</span>
+              </div>
             </div>
             <div class="card" data-panel="snapshot">
               <h2>Live snapshot</h2>
@@ -1032,6 +1072,7 @@ class HermesHACloudPanel extends HTMLElement {
       this.applyEffects();
       this.updateSidePanel();
       this.updateProblemList();
+      this.updateSidebarSections();
       this.updateFocusLane();
       this.updateMobileUI();
       this.drawMiniMap();
@@ -1701,6 +1742,7 @@ class HermesHACloudPanel extends HTMLElement {
         this.mode = value;
         this.applyVisibility();
         this.updateFilters();
+        this.updateSidebarSections();
         this.updateFocusLane();
         this.updateSidePanel();
       });
@@ -1899,20 +1941,62 @@ class HermesHACloudPanel extends HTMLElement {
   }
 
   updateProblemList() {
-    if (!this.problemListEl) return;
     const problems = this.data?.problem_devices || [];
-    this.problemListEl.innerHTML = '';
-    if (!problems.length) {
-      this.problemListEl.innerHTML = '<div class="empty">Inga problem-enheter just nu.</div>';
-      return;
+    if (this.problemListEl) {
+      this.problemListEl.innerHTML = '';
+      if (!problems.length) {
+        this.problemListEl.innerHTML = '<div class="empty">Inga problem-enheter just nu.</div>';
+      } else {
+        problems.slice(0, 10).forEach((item) => {
+          const button = document.createElement('button');
+          button.className = 'row';
+          button.innerHTML = `<strong>${this.escapeHtml(item.title)}</strong><small>${this.escapeHtml(item.meta || item.text || '')}</small>`;
+          button.addEventListener('click', () => this.selectNodeById(item.id));
+          this.problemListEl.appendChild(button);
+        });
+      }
     }
-    problems.slice(0, 10).forEach((item) => {
-      const button = document.createElement('button');
-      button.className = 'row';
-      button.innerHTML = `<strong>${this.escapeHtml(item.title)}</strong><small>${this.escapeHtml(item.meta || item.text || '')}</small>`;
-      button.addEventListener('click', () => this.selectNodeById(item.id));
-      this.problemListEl.appendChild(button);
-    });
+    if (this.sidebarProblemsEl) {
+      this.sidebarProblemsEl.innerHTML = '';
+      if (!problems.length) {
+        this.sidebarProblemsEl.innerHTML = '<div class="empty">Inga problem-enheter just nu.</div>';
+      } else {
+        problems.slice(0, 12).forEach((item) => {
+          const button = document.createElement('button');
+          button.className = 'row';
+          button.innerHTML = `<strong>${this.escapeHtml(item.title)}</strong><small>${this.escapeHtml(item.meta || item.text || '')}</small>`;
+          button.addEventListener('click', () => this.selectNodeById(item.id));
+          this.sidebarProblemsEl.appendChild(button);
+        });
+      }
+    }
+  }
+
+  updateSidebarSections() {
+    const areaNodes = this.nodes.filter((node) => node.layer === 'area').sort((a, b) => (b.importance || 0) - (a.importance || 0));
+    const deviceNodes = this.visibleNodesSorted().filter((node) => node.layer === 'device');
+    if (this.sidebarRoomsEl) {
+      this.sidebarRoomsEl.innerHTML = '';
+      areaNodes.slice(0, 10).forEach((item) => {
+        const button = document.createElement('button');
+        button.className = 'row';
+        button.innerHTML = `<strong>${this.escapeHtml(item.title)}</strong><small>${this.escapeHtml(item.meta || 'Area')}</small>`;
+        button.addEventListener('click', () => this.selectNodeById(item.id));
+        this.sidebarRoomsEl.appendChild(button);
+      });
+      if (!areaNodes.length) this.sidebarRoomsEl.innerHTML = '<div class="empty">Inga areas hittades.</div>';
+    }
+    if (this.sidebarDevicesEl) {
+      this.sidebarDevicesEl.innerHTML = '';
+      deviceNodes.slice(0, 12).forEach((item) => {
+        const button = document.createElement('button');
+        button.className = 'row';
+        button.innerHTML = `<strong>${this.escapeHtml(item.title)}</strong><small>${this.escapeHtml(item.meta || item.group || 'Device')}</small>`;
+        button.addEventListener('click', () => this.selectNodeById(item.id));
+        this.sidebarDevicesEl.appendChild(button);
+      });
+      if (!deviceNodes.length) this.sidebarDevicesEl.innerHTML = '<div class="empty">Inga enheter i nuvarande filter.</div>';
+    }
   }
 
   updateFocusLane() {
