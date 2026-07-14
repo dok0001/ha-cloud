@@ -25,6 +25,8 @@ class HermesHACloudPanel extends HTMLElement {
     this.selectedNode = null;
     this.hoveredNode = null;
     this.searchQuery = '';
+    this.focusFilterMode = 'all';
+    this.focusFilterIds = null;
     this.pointer = new THREE.Vector2();
     this.raycaster = new THREE.Raycaster();
     this.nodeObjects = [];
@@ -90,7 +92,13 @@ class HermesHACloudPanel extends HTMLElement {
     this.inspectorTypeEl = this.shadowRoot.getElementById('inspector-type');
     this.inspectorBodyEl = this.shadowRoot.getElementById('inspector-body');
     this.inspectorMetaEl = this.shadowRoot.getElementById('inspector-meta');
+    this.inspectorActionsEl = this.shadowRoot.getElementById('inspector-actions');
     this.inspectorRelationsEl = this.shadowRoot.getElementById('inspector-relations');
+    this.analysisUnavailableEl = this.shadowRoot.getElementById('analysis-unavailable');
+    this.analysisNoisyEl = this.shadowRoot.getElementById('analysis-noisy');
+    this.analysisHealthEl = this.shadowRoot.getElementById('analysis-health');
+    this.analysisHotspotsEl = this.shadowRoot.getElementById('analysis-hotspots');
+    this.roomsWorkspaceEl = this.shadowRoot.getElementById('rooms-workspace');
     this.miniMapEl = this.shadowRoot.getElementById('minimap');
     this.miniMapCtx = this.miniMapEl?.getContext('2d');
     this.initThree();
@@ -174,6 +182,7 @@ class HermesHACloudPanel extends HTMLElement {
       if (typeof prefs.mobileChromeHidden === 'boolean') this.mobileChromeHidden = prefs.mobileChromeHidden;
       if (prefs.sidebarView) this.sidebarView = prefs.sidebarView;
       if (!['rooms', 'devices', 'problems', 'types'].includes(this.sidebarView)) this.sidebarView = 'rooms';
+      if (prefs.focusFilterMode) this.focusFilterMode = prefs.focusFilterMode;
       if (prefs.effects && typeof prefs.effects === 'object') this.effects = { ...this.effects, ...prefs.effects };
       this.autoDrift = this.motionMode === 'live' ? 0.0001 : this.motionMode === 'still' ? 0 : 0.00004;
     } catch {}
@@ -192,6 +201,7 @@ class HermesHACloudPanel extends HTMLElement {
         drawerOpen: this.drawerOpen,
         mobileChromeHidden: this.mobileChromeHidden,
         sidebarView: this.sidebarView,
+        focusFilterMode: this.focusFilterMode,
       }));
     } catch {}
   }
@@ -479,6 +489,23 @@ class HermesHACloudPanel extends HTMLElement {
           gap: 8px;
           margin-top: 12px;
         }
+        .inspector-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-top: 12px;
+        }
+        .inspector-action-btn {
+          border: 1px solid rgba(140,180,255,0.14);
+          background: rgba(14,21,42,0.84);
+          color: #eef4ff;
+          padding: 8px 10px;
+          border-radius: 999px;
+          cursor: pointer;
+          font: inherit;
+          font-size: 12px;
+        }
+        .inspector-action-btn.active { border-color: rgba(110, 213, 255, 0.44); color: #8fe8ff; }
         .inspector-section-title {
           font-size: 11px;
           text-transform: uppercase;
@@ -497,6 +524,30 @@ class HermesHACloudPanel extends HTMLElement {
           background: rgba(14,21,42,0.84);
           color: #eef4ff;
           font-size: 12px;
+        }
+        .inspector-pill.critical { border-color: rgba(255,107,107,0.35); color: #ffb3b3; }
+        .inspector-pill.ok { border-color: rgba(121,240,174,0.26); color: #aff3c6; }
+        .inspector-pill.info { border-color: rgba(110,213,255,0.28); color: #a9e9ff; }
+        .inspector-rel-group {
+          display: grid;
+          gap: 8px;
+          margin-top: 8px;
+        }
+        .inspector-rel-group-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+        }
+        .inspector-badge {
+          min-width: 24px;
+          text-align: center;
+          padding: 4px 8px;
+          border-radius: 999px;
+          border: 1px solid rgba(140,180,255,0.14);
+          background: rgba(14,21,42,0.84);
+          color: #eef4ff;
+          font-size: 11px;
         }
         .inspector-rel-btn {
           border: 1px solid rgba(140,180,255,0.14);
@@ -594,6 +645,8 @@ class HermesHACloudPanel extends HTMLElement {
         aside[data-window-preset="focus"] .card[data-panel]:not([data-panel="focus"]) { display: none; }
         aside[data-window-preset="problem"] .card[data-panel]:not([data-panel="problem"]) { display: none; }
         aside[data-window-preset="snapshot"] .card[data-panel]:not([data-panel="snapshot"]) { display: none; }
+        aside[data-window-preset="analysis"] .card[data-panel]:not([data-panel="analysis"]) { display: none; }
+        aside[data-window-preset="rooms"] .card[data-panel]:not([data-panel="rooms"]) { display: none; }
         .card { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.18); }
         .card h2, .card h3 { margin: 0 0 8px 0; }
         .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
@@ -935,6 +988,19 @@ class HermesHACloudPanel extends HTMLElement {
               <div class="microcopy">Enheter med unavailable- eller unknown-tyngd. Klicka för att följa kopplingarna.</div>
               <div class="list" id="problemlist"></div>
             </div>
+            <div class="card" data-panel="analysis">
+              <h3>Analysis</h3>
+              <div class="microcopy">Axon-inspirerad analysvy för fel, brus, integrationshälsa och hotspots.</div>
+              <div class="list" id="analysis-unavailable"></div>
+              <div class="list" id="analysis-noisy"></div>
+              <div class="list" id="analysis-health"></div>
+              <div class="list" id="analysis-hotspots"></div>
+            </div>
+            <div class="card" data-panel="rooms">
+              <h3>Rooms workspace</h3>
+              <div class="microcopy">3Dash-inspirerat arbetsläge där rum, system och närliggande enheter binds tätare ihop.</div>
+              <div class="list" id="rooms-workspace"></div>
+            </div>
             <div class="card sidebar-legend-card">
               <h3>Node types</h3>
               <div class="microcopy">ArcRift-inspirerad legendvy för att snabbt förstå lagren i HA-kartan.</div>
@@ -1030,9 +1096,9 @@ class HermesHACloudPanel extends HTMLElement {
             </div>
             <div class="desktop-header-center" id="desktop-header-tabs">
               <button type="button" data-window-target="overview">Knowledge Graph</button>
-              <button type="button" data-window-target="snapshot">Snapshot</button>
+              <button type="button" data-window-target="rooms">Rooms</button>
+              <button type="button" data-window-target="analysis">Analysis</button>
               <button type="button" data-window-target="relations">Facts</button>
-              <button type="button" data-window-target="focus">Chat</button>
               <button type="button" data-window-target="problem">Problems</button>
             </div>
             <div class="desktop-header-right">
@@ -1062,6 +1128,7 @@ class HermesHACloudPanel extends HTMLElement {
             </div>
             <div class="inspector-body" id="inspector-body">Välj en nod i grafen för att se metadata, relationer och fokusvägar utan att lämna molnvyn.</div>
             <div class="inspector-meta" id="inspector-meta"></div>
+            <div class="inspector-actions" id="inspector-actions"></div>
             <div class="inspector-relations" id="inspector-relations"></div>
           </div>
           <div class="minimap-wrap" id="minimap-wrap">
@@ -1606,9 +1673,12 @@ class HermesHACloudPanel extends HTMLElement {
           return;
         }
         this.windowPreset = target || 'overview';
+        if (target === 'rooms') this.sidebarView = 'rooms';
+        if (target === 'problem') this.sidebarView = 'problems';
         this.updateWindowPreset();
         this.updateMobileUI();
         this.updateControlPills();
+        this.updateSidePanel();
         this.savePreferences();
       });
     });
@@ -1723,7 +1793,7 @@ class HermesHACloudPanel extends HTMLElement {
     const preset = this.windowPreset || 'overview';
     this.panelAsideEl.setAttribute('data-window-preset', preset);
     if (this.isMobileLayout()) {
-      const mobileMap = { overview: 'cloud', snapshot: 'snapshot', relations: 'relations', focus: 'focus', problem: 'problem' };
+      const mobileMap = { overview: 'cloud', snapshot: 'snapshot', relations: 'relations', focus: 'focus', problem: 'problem', analysis: 'problem', rooms: 'snapshot' };
       this.mobileTab = mobileMap[preset] || this.mobileTab;
     }
   }
@@ -1808,7 +1878,7 @@ class HermesHACloudPanel extends HTMLElement {
       this.drawMiniMap();
       this.savePreferences();
     }, true);
-    build(this.windowPresetsEl, this.windowPreset, [['overview', '🪟 Översikt'], ['snapshot', '📸 Snapshot'], ['relations', '🧬 Kopplingar'], ['focus', '🎯 Fokus'], ['problem', '⚠️ Problem']], (value) => {
+    build(this.windowPresetsEl, this.windowPreset, [['overview', '🪟 Översikt'], ['rooms', '🏠 Rooms'], ['analysis', '📊 Analysis'], ['relations', '🧬 Kopplingar'], ['problem', '⚠️ Problem']], (value) => {
       this.windowPreset = value;
       this.updateWindowPreset();
       this.updateMobileUI();
@@ -1858,7 +1928,8 @@ class HermesHACloudPanel extends HTMLElement {
   applyVisibility() {
     for (const mesh of this.nodeObjects) {
       const node = mesh.userData.node;
-      mesh.visible = this.modeMatches(node) && this.matchesSearch(node);
+      const focusAllowed = !this.focusFilterIds || this.focusFilterIds.has(node.id);
+      mesh.visible = this.modeMatches(node) && this.matchesSearch(node) && focusAllowed;
       const label = this.labelEls.get(node.id);
       if (label) label.style.opacity = '0';
     }
@@ -1878,8 +1949,13 @@ class HermesHACloudPanel extends HTMLElement {
     const mesh = this.nodeMap.get(id);
     if (!mesh) return;
     this.selectedNode = mesh.userData.node;
+    if (this.windowPreset === 'rooms' && this.selectedNode?.layer !== 'area' && this.selectedNode?.area_id) this.sidebarView = 'rooms';
+    if (this.focusFilterMode === 'neighbors') this.focusFilterIds = this.collectNeighborIds(this.selectedNode);
+    else if (this.focusFilterMode === 'isolate') this.focusFilterIds = this.getLineageIds(this.selectedNode);
     this.focusOnNode(this.selectedNode);
+    this.applyVisibility();
     this.updateSidePanel();
+    this.updateSidebarSections();
     this.updateFocusLane();
     this.drawMiniMap();
   }
@@ -1898,6 +1974,136 @@ class HermesHACloudPanel extends HTMLElement {
       if (!seen.has(otherId)) seen.set(otherId, { ...other, relation, weight: link.weight || 1 });
     });
     return [...seen.values()].sort((a, b) => ((b.severity === 'critical') - (a.severity === 'critical')) || ((b.importance || 0) - (a.importance || 0))).slice(0, 16);
+  }
+
+  relationGroupLabel(rel) {
+    const key = String(rel?.relation || '').toLowerCase();
+    if (key.includes('problem') || key.includes('unavailable')) return 'Problems';
+    if (key.includes('area') || key.includes('room')) return 'Rooms';
+    if (key.includes('device')) return 'Devices';
+    if (key.includes('entity')) return 'Entities';
+    if (key.includes('automation') || key.includes('trigger') || key.includes('controls')) return 'Automations';
+    if (key.includes('scene')) return 'Scenes';
+    if (key.includes('person') || key.includes('presence')) return 'People';
+    return 'Linked';
+  }
+
+  groupRelatedNodes(related = []) {
+    const groups = new Map();
+    related.forEach((rel) => {
+      const label = this.relationGroupLabel(rel);
+      if (!groups.has(label)) groups.set(label, []);
+      groups.get(label).push(rel);
+    });
+    return [...groups.entries()].map(([label, items]) => ({ label, items }));
+  }
+
+  collectNeighborIds(node) {
+    if (!node?.id) return new Set();
+    const ids = new Set([node.id]);
+    this.getRelatedNodes(node).forEach((rel) => ids.add(rel.id));
+    return ids;
+  }
+
+  setFocusFilter(mode = 'all') {
+    this.focusFilterMode = mode;
+    const node = this.selectedNode || this.hoveredNode;
+    if (!node?.id || mode === 'all') {
+      this.focusFilterIds = null;
+    } else if (mode === 'neighbors') {
+      this.focusFilterIds = this.collectNeighborIds(node);
+    } else if (mode === 'isolate') {
+      this.focusFilterIds = this.getLineageIds(node);
+    }
+    this.applyVisibility();
+    this.updateSidebarSections();
+    this.updateFocusLane();
+    this.updateSidePanel();
+    this.savePreferences();
+  }
+
+  computeAnalysisData() {
+    const devices = this.nodes.filter((node) => node.layer === 'device');
+    const integrations = this.nodes.filter((node) => node.layer === 'integration');
+    const areas = this.nodes.filter((node) => node.layer === 'area');
+    const unavailable = this.nodes.filter((node) => node.severity === 'critical' || node.state === 'unavailable').slice(0, 8);
+    const noisy = devices.map((node) => {
+      const related = this.getRelatedNodes(node);
+      return { ...node, noisyScore: related.length + (node.view_count || 0) + (node.use_count || 0) };
+    }).sort((a, b) => (b.noisyScore || 0) - (a.noisyScore || 0)).slice(0, 8);
+    const integrationHealth = integrations.map((node) => {
+      const related = this.getRelatedNodes(node);
+      const critical = related.filter((x) => x.severity === 'critical' || x.state === 'unavailable').length;
+      return { ...node, relatedCount: related.length, criticalCount: critical, healthScore: Math.max(0, related.length - critical * 2) };
+    }).sort((a, b) => (a.criticalCount - b.criticalCount) || (b.relatedCount - a.relatedCount)).slice(0, 8);
+    const hotspots = areas.map((node) => {
+      const related = this.getRelatedNodes(node);
+      const devicesInArea = related.filter((x) => x.layer === 'device').length;
+      const problems = related.filter((x) => x.severity === 'critical' || x.state === 'unavailable').length;
+      return { ...node, devicesInArea, problems, hotspotScore: devicesInArea + problems * 3 };
+    }).sort((a, b) => (b.hotspotScore || 0) - (a.hotspotScore || 0)).slice(0, 8);
+    return { unavailable, noisy, integrationHealth, hotspots };
+  }
+
+  renderActionList(host, title, items, detailFn) {
+    if (!host) return;
+    host.innerHTML = `<div class="inspector-section-title">${this.escapeHtml(title)}</div>`;
+    if (!items.length) {
+      host.innerHTML += '<div class="empty">Inget att visa just nu.</div>';
+      return;
+    }
+    items.forEach((item) => {
+      const button = document.createElement('button');
+      button.className = 'row';
+      button.innerHTML = `<strong>${this.escapeHtml(item.title)}</strong><small>${this.escapeHtml(detailFn(item))}</small>`;
+      button.addEventListener('click', () => this.selectNodeById(item.id));
+      host.appendChild(button);
+    });
+  }
+
+  updateAnalysisWorkspace() {
+    const analysis = this.computeAnalysisData();
+    this.renderActionList(this.analysisUnavailableEl, 'Unavailable now', analysis.unavailable, (item) => item.meta || item.group || item.layer || 'Problem');
+    this.renderActionList(this.analysisNoisyEl, 'Noisy devices', analysis.noisy, (item) => `score ${item.noisyScore} · ${item.meta || item.group || 'Device'}`);
+    this.renderActionList(this.analysisHealthEl, 'Integration health', analysis.integrationHealth, (item) => `${item.criticalCount} critical · ${item.relatedCount} linked`);
+    this.renderActionList(this.analysisHotspotsEl, 'Area hotspots', analysis.hotspots, (item) => `${item.devicesInArea} devices · ${item.problems} problems`);
+  }
+
+  updateRoomsWorkspace(node = this.selectedNode || this.hoveredNode) {
+    if (!this.roomsWorkspaceEl) return;
+    this.roomsWorkspaceEl.innerHTML = '';
+    const target = node?.layer === 'area' ? node : (node?.area_id ? this.getNodeById(`area-${node.area_id}`) : null);
+    if (!target) {
+      this.roomsWorkspaceEl.innerHTML = '<div class="empty">Välj ett rum/area eller en nod med area-koppling för att öppna workspace-läget.</div>';
+      return;
+    }
+    const related = this.getRelatedNodes(target);
+    const groups = [
+      ['Devices', related.filter((x) => x.layer === 'device').slice(0, 6)],
+      ['Entities', related.filter((x) => x.layer === 'entity').slice(0, 6)],
+      ['Automations', related.filter((x) => x.layer === 'automation' || x.layer === 'scene').slice(0, 4)],
+      ['Problems', related.filter((x) => x.severity === 'critical' || x.state === 'unavailable').slice(0, 4)],
+    ];
+    groups.forEach(([label, items]) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'inspector-rel-group';
+      wrap.innerHTML = `<div class="inspector-rel-group-head"><strong>${this.escapeHtml(label)}</strong><span class="inspector-badge">${items.length}</span></div>`;
+      if (!items.length) {
+        const empty = document.createElement('div');
+        empty.className = 'empty';
+        empty.textContent = `Inga ${label.toLowerCase()} i fokus just nu.`;
+        wrap.appendChild(empty);
+      } else {
+        items.forEach((item) => {
+          const button = document.createElement('button');
+          button.className = 'row';
+          button.innerHTML = `<strong>${this.escapeHtml(item.title)}</strong><small>${this.escapeHtml(item.meta || item.group || item.layer || '')}</small>`;
+          button.addEventListener('click', () => this.selectNodeById(item.id));
+          wrap.appendChild(button);
+        });
+      }
+      this.roomsWorkspaceEl.appendChild(wrap);
+    });
   }
 
   getNodeById(id) {
@@ -2063,15 +2269,23 @@ class HermesHACloudPanel extends HTMLElement {
   }
 
   updateSidebarSections() {
-    const areaNodes = this.nodes.filter((node) => node.layer === 'area').sort((a, b) => (b.importance || 0) - (a.importance || 0));
+    const selectedAreaId = (this.selectedNode?.layer === 'area' ? this.selectedNode.id : (this.selectedNode?.area_id ? `area-${this.selectedNode.area_id}` : null));
+    const areaNodes = this.nodes.filter((node) => node.layer === 'area').sort((a, b) => {
+      if (selectedAreaId && a.id === selectedAreaId) return -1;
+      if (selectedAreaId && b.id === selectedAreaId) return 1;
+      return (b.importance || 0) - (a.importance || 0);
+    });
     const deviceNodes = this.visibleNodesSorted().filter((node) => node.layer === 'device');
     if (this.sidebarRoomsEl) {
       this.sidebarRoomsEl.innerHTML = '';
       areaNodes.slice(0, 10).forEach((item) => {
+        const related = this.getRelatedNodes(item);
+        const deviceCount = related.filter((x) => x.layer === 'device').length;
+        const problemCount = related.filter((x) => x.severity === 'critical' || x.state === 'unavailable').length;
         const button = document.createElement('button');
         button.className = 'row';
-        button.innerHTML = `<strong>${this.escapeHtml(item.title)}</strong><small>${this.escapeHtml(item.meta || 'Area')}</small>`;
-        button.addEventListener('click', () => this.selectNodeById(item.id));
+        button.innerHTML = `<strong>${this.escapeHtml(item.title)}</strong><small>${deviceCount} devices · ${problemCount} problems</small>`;
+        button.addEventListener('click', () => { this.windowPreset = 'rooms'; this.sidebarView = 'rooms'; this.selectNodeById(item.id); this.updateWindowPreset(); this.updateDesktopArcUI(); });
         this.sidebarRoomsEl.appendChild(button);
       });
       if (!areaNodes.length) this.sidebarRoomsEl.innerHTML = '<div class="empty">Inga areas hittades.</div>';
@@ -2079,9 +2293,11 @@ class HermesHACloudPanel extends HTMLElement {
     if (this.sidebarDevicesEl) {
       this.sidebarDevicesEl.innerHTML = '';
       deviceNodes.slice(0, 12).forEach((item) => {
+        const related = this.getRelatedNodes(item);
+        const entityCount = related.filter((x) => x.layer === 'entity').length;
         const button = document.createElement('button');
         button.className = 'row';
-        button.innerHTML = `<strong>${this.escapeHtml(item.title)}</strong><small>${this.escapeHtml(item.meta || item.group || 'Device')}</small>`;
+        button.innerHTML = `<strong>${this.escapeHtml(item.title)}</strong><small>${entityCount} entities · ${this.escapeHtml(item.meta || item.group || 'Device')}</small>`;
         button.addEventListener('click', () => this.selectNodeById(item.id));
         this.sidebarDevicesEl.appendChild(button);
       });
@@ -2131,21 +2347,26 @@ class HermesHACloudPanel extends HTMLElement {
   updateSidePanel() {
     if (!this.data) return;
     this.updateStats();
+    this.updateAnalysisWorkspace();
+    this.updateRoomsWorkspace();
     const item = this.selectedNode || this.hoveredNode;
-    if (!item) return;
+    if (!item) {
+      this.updateInspectorPanel(null, []);
+      return;
+    }
     const chips = [];
-    if (item.layer && item.layer !== 'core') chips.push(item.layer);
-    if (item.group) chips.push(item.group);
-    if (item.category) chips.push(item.category);
-    if (item.state) chips.push(`state ${item.state}`);
-    if (item.use_count != null) chips.push(`count ${item.use_count}`);
-    if (item.view_count != null) chips.push(`unavailable ${item.view_count}`);
-    if (item.meta) chips.push(item.meta);
+    if (item.layer && item.layer !== 'core') chips.push({ label: item.layer, tone: 'info' });
+    if (item.group) chips.push({ label: item.group, tone: 'info' });
+    if (item.category) chips.push({ label: item.category, tone: 'info' });
+    if (item.state) chips.push({ label: `state ${item.state}`, tone: item.state === 'unavailable' ? 'critical' : 'ok' });
+    if (item.use_count != null) chips.push({ label: `count ${item.use_count}`, tone: 'info' });
+    if (item.view_count != null) chips.push({ label: `unavailable ${item.view_count}`, tone: item.view_count ? 'critical' : 'ok' });
+    if (item.meta) chips.push({ label: item.meta, tone: 'info' });
     this.detailsEl.innerHTML = `
       <div class="detail-type">${this.escapeHtml(item.layer || item.type || 'core')}</div>
       <h3>${this.escapeHtml(item.title)}</h3>
       <div class="detail-body">${this.escapeHtml(item.text || '')}</div>
-      <div class="chips">${chips.map((chip) => `<span class="chip ${item.severity === 'critical' && String(chip).includes('unavailable') ? 'critical' : item.severity === 'warning' ? 'warning' : ''}">${this.escapeHtml(chip)}</span>`).join('')}</div>
+      <div class="chips">${chips.map((chip) => `<span class="chip ${chip.tone === 'critical' ? 'critical' : chip.tone === 'warning' ? 'warning' : ''}">${this.escapeHtml(chip.label)}</span>`).join('')}</div>
     `;
     const related = this.getRelatedNodes(item);
     this.relationsEl.innerHTML = related.length ? '' : '<div class="empty">Ingen explicit koppling hittades för vald nod.</div>';
@@ -2161,41 +2382,65 @@ class HermesHACloudPanel extends HTMLElement {
   }
 
   updateInspectorPanel(item, related = []) {
-    if (!this.inspectorShellEl || !this.inspectorTitleEl || !this.inspectorTypeEl || !this.inspectorBodyEl || !this.inspectorMetaEl || !this.inspectorRelationsEl) return;
+    if (!this.inspectorShellEl || !this.inspectorTitleEl || !this.inspectorTypeEl || !this.inspectorBodyEl || !this.inspectorMetaEl || !this.inspectorRelationsEl || !this.inspectorActionsEl) return;
     const node = item || this.selectedNode || this.hoveredNode;
     if (!node) {
       this.inspectorTypeEl.textContent = 'Inspector';
       this.inspectorTitleEl.textContent = 'Hermes HA Cloud';
       this.inspectorBodyEl.textContent = 'Välj en nod i grafen för att se metadata, relationer och fokusvägar utan att lämna molnvyn.';
       this.inspectorMetaEl.innerHTML = '';
+      this.inspectorActionsEl.innerHTML = '';
       this.inspectorRelationsEl.innerHTML = '';
       return;
     }
     const chips = [];
-    if (node.layer && node.layer !== 'core') chips.push(node.layer);
-    if (node.group) chips.push(node.group);
-    if (node.category) chips.push(node.category);
-    if (node.state) chips.push(`state ${node.state}`);
-    if (node.meta) chips.push(node.meta);
+    if (node.layer && node.layer !== 'core') chips.push({ label: node.layer, tone: 'info' });
+    if (node.group) chips.push({ label: node.group, tone: 'info' });
+    if (node.category) chips.push({ label: node.category, tone: 'info' });
+    if (node.state) chips.push({ label: `state ${node.state}`, tone: node.state === 'unavailable' ? 'critical' : 'ok' });
+    if (node.meta) chips.push({ label: node.meta, tone: 'info' });
+    const grouped = this.groupRelatedNodes(related);
     this.inspectorTypeEl.textContent = String(node.layer || node.type || 'core').toUpperCase();
     this.inspectorTitleEl.textContent = node.title || 'Untitled node';
     this.inspectorBodyEl.textContent = node.text || 'Ingen extra beskrivning tillgänglig för vald nod ännu.';
     this.inspectorMetaEl.innerHTML = `
       <div class="inspector-section-title">Metadata</div>
-      <div class="inspector-pill-grid">${chips.length ? chips.map((chip) => `<span class="inspector-pill">${this.escapeHtml(chip)}</span>`).join('') : '<span class="inspector-pill">Ingen metadata</span>'}</div>
+      <div class="inspector-pill-grid">
+        ${chips.length ? chips.map((chip) => `<span class="inspector-pill ${chip.tone}">${this.escapeHtml(chip.label)}</span>`).join('') : '<span class="inspector-pill">Ingen metadata</span>'}
+        <span class="inspector-pill info">${related.length} linked</span>
+        <span class="inspector-pill ${grouped.some((g) => g.label === 'Problems') ? 'critical' : 'ok'}">${grouped.length} relation groups</span>
+      </div>
     `;
-    const topRelated = related.slice(0, 4);
-    this.inspectorRelationsEl.innerHTML = `<div class="inspector-section-title">Strongest connections</div>`;
-    if (!topRelated.length) {
+    this.inspectorActionsEl.innerHTML = '';
+    [
+      ['center', 'Center', () => this.focusOnNode(node)],
+      ['isolate', 'Isolate', () => this.setFocusFilter(this.focusFilterMode === 'isolate' ? 'all' : 'isolate')],
+      ['neighbors', 'Show neighbors', () => this.setFocusFilter(this.focusFilterMode === 'neighbors' ? 'all' : 'neighbors')],
+    ].forEach(([key, label, handler]) => {
+      const button = document.createElement('button');
+      button.className = 'inspector-action-btn';
+      if ((key === 'isolate' && this.focusFilterMode === 'isolate') || (key === 'neighbors' && this.focusFilterMode === 'neighbors')) button.classList.add('active');
+      button.textContent = label;
+      button.addEventListener('click', handler);
+      this.inspectorActionsEl.appendChild(button);
+    });
+    this.inspectorRelationsEl.innerHTML = `<div class="inspector-section-title">Relation groups</div>`;
+    if (!grouped.length) {
       this.inspectorRelationsEl.innerHTML += '<div class="empty">Inga tydliga kopplingar för vald nod ännu.</div>';
       return;
     }
-    topRelated.forEach((rel) => {
-      const button = document.createElement('button');
-      button.className = 'inspector-rel-btn';
-      button.innerHTML = `<strong>${this.escapeHtml(rel.title)}</strong><small>${this.escapeHtml(rel.relation)} · ${this.escapeHtml(rel.meta || rel.group || rel.layer || '')}</small>`;
-      button.addEventListener('click', () => this.selectNodeById(rel.id));
-      this.inspectorRelationsEl.appendChild(button);
+    grouped.forEach((group) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'inspector-rel-group';
+      wrap.innerHTML = `<div class="inspector-rel-group-head"><strong>${this.escapeHtml(group.label)}</strong><span class="inspector-badge">${group.items.length}</span></div>`;
+      group.items.slice(0, 4).forEach((rel) => {
+        const button = document.createElement('button');
+        button.className = 'inspector-rel-btn';
+        button.innerHTML = `<strong>${this.escapeHtml(rel.title)}</strong><small>${this.escapeHtml(rel.relation)} · ${this.escapeHtml(rel.meta || rel.group || rel.layer || '')}</small>`;
+        button.addEventListener('click', () => this.selectNodeById(rel.id));
+        wrap.appendChild(button);
+      });
+      this.inspectorRelationsEl.appendChild(wrap);
     });
   }
 
