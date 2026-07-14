@@ -107,6 +107,46 @@ class HermesHACloudPanel extends HTMLElement {
       .replaceAll("'", '&#39;');
   }
 
+  makeGlowTexture({ core = 'rgba(255,255,255,1)', mid = 'rgba(150,210,255,0.34)', edge = 'rgba(120,180,255,0)' } = {}) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createRadialGradient(64, 64, 6, 64, 64, 64);
+    grad.addColorStop(0, core);
+    grad.addColorStop(0.22, 'rgba(255,255,255,0.95)');
+    grad.addColorStop(0.5, mid);
+    grad.addColorStop(1, edge);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 128, 128);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    return texture;
+  }
+
+  makeLensFlareGroup(color) {
+    const group = new THREE.Group();
+    const flareTexture = this.flareTexture || this.makeGlowTexture();
+    const makeSprite = (scale, opacity, offsetX, offsetY) => {
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: flareTexture,
+        color,
+        transparent: true,
+        opacity,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }));
+      sprite.scale.set(scale, scale, 1);
+      sprite.position.set(offsetX, offsetY, 0);
+      group.add(sprite);
+      return sprite;
+    };
+    makeSprite(2.8, 0.18, 0, 0);
+    makeSprite(1.2, 0.11, 0.7, 0.25);
+    makeSprite(0.75, 0.08, -0.55, -0.35);
+    return group;
+  }
+
   loadPreferences() {
     try {
       const raw = window.localStorage?.getItem('hermes-ha-cloud-ui');
@@ -748,6 +788,8 @@ class HermesHACloudPanel extends HTMLElement {
     this.controls.minDistance = 180;
     this.controls.maxDistance = 580;
     this.controls.target.set(0, 0, 0);
+    this.flareTexture = this.makeGlowTexture();
+    this.softGlowTexture = this.makeGlowTexture({ core: 'rgba(255,255,255,0.92)', mid: 'rgba(132,196,255,0.18)', edge: 'rgba(120,180,255,0)' });
     this.scene.add(new THREE.AmbientLight(0x8fb5ff, 0.95));
     const keyLight = new THREE.PointLight(0x6ed5ff, 1.55, 1400, 2);
     keyLight.position.set(0, 44, 38);
@@ -758,10 +800,12 @@ class HermesHACloudPanel extends HTMLElement {
     const rimLight = new THREE.PointLight(0x89ffc9, 0.48, 980, 2);
     rimLight.position.set(210, -42, -180);
     this.scene.add(rimLight);
-    this.coreGlow = new THREE.Mesh(new THREE.SphereGeometry(18, 32, 32), new THREE.MeshBasicMaterial({ color: 0x85e8ff, transparent: true, opacity: 0.95 }));
+    this.coreGlow = new THREE.Mesh(new THREE.SphereGeometry(13, 32, 32), new THREE.MeshPhysicalMaterial({ color: 0x8fe8ff, emissive: 0x8fe8ff, emissiveIntensity: 1.8, roughness: 0.16, metalness: 0.02 }));
     this.scene.add(this.coreGlow);
-    this.coreShell = new THREE.Mesh(new THREE.SphereGeometry(36, 32, 32), new THREE.MeshBasicMaterial({ color: 0x4c69ff, transparent: true, opacity: 0.08 }));
+    this.coreShell = new THREE.Mesh(new THREE.SphereGeometry(24, 32, 32), new THREE.MeshBasicMaterial({ color: 0x4c69ff, transparent: true, opacity: 0.035 }));
     this.scene.add(this.coreShell);
+    this.coreFlare = this.makeLensFlareGroup(0xa7efff);
+    this.scene.add(this.coreFlare);
     this.selectionAura = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 24), new THREE.MeshBasicMaterial({ color: 0xb9f4ff, transparent: true, opacity: 0.16 }));
     this.selectionAura.visible = false;
     this.scene.add(this.selectionAura);
@@ -1039,18 +1083,18 @@ class HermesHACloudPanel extends HTMLElement {
     const sphereGeo = new THREE.SphereGeometry(1, 20, 20);
     for (const node of this.nodes) {
       const color = this.colorFor(node);
-      const shellMaterial = new THREE.MeshPhysicalMaterial({ color, emissive: color, emissiveIntensity: node.layer === 'area' ? 1.15 : (node.severity === 'critical' ? 1.2 : 0.75), roughness: 0.34, metalness: 0.04, transparent: true, opacity: Math.min(0.98, node.alpha) });
+      const shellMaterial = new THREE.MeshPhysicalMaterial({ color, emissive: color, emissiveIntensity: node.layer === 'area' ? 1.35 : (node.severity === 'critical' ? 1.08 : 0.62), roughness: 0.24, metalness: node.layer === 'scene' || node.layer === 'automation' ? 0.16 : 0.05, clearcoat: 0.7, clearcoatRoughness: 0.35, transparent: true, opacity: Math.min(0.98, node.alpha) });
       const mesh = new THREE.Mesh(sphereGeo.clone(), shellMaterial);
       mesh.position.copy(node.position);
       mesh.scale.setScalar(node.size);
       mesh.userData.node = node;
-      const halo = new THREE.Mesh(new THREE.SphereGeometry(1.2, 18, 18), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: node.layer === 'area' ? 0.18 : (node.severity === 'critical' ? 0.22 : 0.08) }));
-      halo.scale.setScalar(node.size * (node.layer === 'area' ? 2.6 : (node.severity === 'critical' ? 2.05 : 1.72)));
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.softGlowTexture, color, transparent: true, opacity: node.layer === 'area' ? 0.12 : (node.severity === 'critical' ? 0.16 : 0.055), blending: THREE.AdditiveBlending, depthWrite: false }));
+      halo.scale.setScalar(node.size * (node.layer === 'area' ? 3.1 : (node.severity === 'critical' ? 2.15 : 1.38)));
       mesh.add(halo);
       mesh.userData.halo = halo;
       if (node.layer === 'area') {
-        const starGlow = new THREE.Mesh(new THREE.SphereGeometry(1.45, 20, 20), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.14 }));
-        starGlow.scale.setScalar(node.size * 4.4);
+        const starGlow = this.makeLensFlareGroup(color);
+        starGlow.scale.setScalar(node.size * 1.55);
         mesh.add(starGlow);
         mesh.userData.starGlow = starGlow;
         const nebula = new THREE.Mesh(
@@ -1058,7 +1102,7 @@ class HermesHACloudPanel extends HTMLElement {
           new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.055, blending: THREE.AdditiveBlending, depthWrite: false })
         );
         nebula.position.copy(node.position);
-        nebula.scale.set(node.size * 13, node.size * 6.5, node.size * 11.5);
+        nebula.scale.set(node.size * 10.5, node.size * 4.8, node.size * 9.2);
         nebula.rotation.z = node.phase || 0;
         nebula.userData.nodeId = node.id;
         this.clusterRoot.add(nebula);
@@ -1349,6 +1393,7 @@ class HermesHACloudPanel extends HTMLElement {
     if (this.pulsePoints) this.pulsePoints.visible = !!this.effects.relationTraffic;
     if (this.coreGlow) this.coreGlow.visible = !!this.effects.cinematicGlow;
     if (this.coreShell) this.coreShell.visible = !!this.effects.cinematicGlow;
+    if (this.coreFlare) this.coreFlare.visible = !!this.effects.cinematicGlow;
     this.rings?.forEach((ring) => { ring.visible = !!this.effects.cinematicGlow; });
     this.nodeObjects?.forEach((mesh) => {
       if (mesh.userData.starGlow) mesh.userData.starGlow.visible = !!this.effects.cinematicGlow;
@@ -1826,9 +1871,14 @@ class HermesHACloudPanel extends HTMLElement {
     const focusNode = this.selectedNode || this.hoveredNode;
     const lineageIds = this.getLineageIds(focusNode);
     this.graphRoot.rotation.y += this.autoDrift * dt;
-    this.coreGlow.scale.setScalar(1 + Math.sin(t * 1.2) * 0.06);
+    this.coreGlow.scale.setScalar(1 + Math.sin(t * 1.2) * 0.035);
     this.coreShell.rotation.y -= this.autoDrift * dt * 3;
     this.coreShell.rotation.x += this.autoDrift * dt * 1.3;
+    if (this.coreFlare) {
+      this.coreFlare.position.copy(this.coreGlow.position);
+      this.coreFlare.rotation.z += 0.00022 * dt;
+      this.coreFlare.scale.setScalar(1 + Math.sin(t * 1.4) * 0.028);
+    }
     if (this.starfield) { this.starfield.rotation.y += 0.000012 * dt * (motionFactor || 0.2); this.starfield.rotation.x = Math.sin(t * 0.08) * 0.18; }
     this.rings?.forEach((ring, idx) => { ring.rotation.y += (0.00005 + idx * 0.000015) * dt * (motionFactor || 0.15); ring.rotation.z += (0.00003 + idx * 0.00001) * dt * (motionFactor || 0.1); });
 
@@ -1865,8 +1915,8 @@ class HermesHACloudPanel extends HTMLElement {
       mesh.scale.lerp(new THREE.Vector3(scale, scale, scale), 0.18);
       mesh.material.emissiveIntensity = active ? 1.55 : inLineage ? 1.15 : node.layer === 'area' ? 1.15 : node.severity === 'critical' ? 1.18 : 0.72;
       mesh.material.opacity = active ? 1 : inLineage ? Math.min(0.99, node.alpha + 0.12) : Math.min(0.98, node.alpha);
-      if (mesh.userData.halo) mesh.userData.halo.material.opacity = active ? 0.24 : inLineage ? 0.16 : (node.layer === 'area' ? 0.18 : (node.severity === 'critical' ? 0.18 : 0.08));
-      if (mesh.userData.starGlow) mesh.userData.starGlow.material.opacity = active ? 0.24 : inLineage ? 0.18 : 0.14;
+      if (mesh.userData.halo) mesh.userData.halo.material.opacity = active ? 0.14 : inLineage ? 0.09 : (node.layer === 'area' ? 0.12 : (node.severity === 'critical' ? 0.12 : 0.055));
+      if (mesh.userData.starGlow) mesh.userData.starGlow.children?.forEach((sprite, idx) => { sprite.material.opacity = active ? (idx === 0 ? 0.18 : 0.12) : inLineage ? (idx === 0 ? 0.13 : 0.09) : (idx === 0 ? 0.10 : 0.065); });
     }
 
     this.orbitRingObjects?.forEach((ring) => {
@@ -1886,7 +1936,7 @@ class HermesHACloudPanel extends HTMLElement {
       nebula.rotation.y += 0.00035 * dt * (1 + ((idx % 3) * 0.2));
       nebula.rotation.z += 0.00018 * dt;
       const active = lineageIds.has(nebula.userData.nodeId);
-      nebula.material.opacity = active ? 0.09 : 0.055;
+      nebula.material.opacity = active ? 0.07 : 0.04;
     });
 
     const focusMesh = this.nodeMap.get(this.selectedNode?.id || this.hoveredNode?.id);
