@@ -85,6 +85,12 @@ class HermesHACloudPanel extends HTMLElement {
     this.drawerOverlayEl = this.shadowRoot.getElementById('drawer-overlay');
     this.drawerShellEl = this.shadowRoot.getElementById('controls-drawer');
     this.panelAsideEl = this.shadowRoot.querySelector('aside');
+    this.inspectorShellEl = this.shadowRoot.getElementById('inspector-shell');
+    this.inspectorTitleEl = this.shadowRoot.getElementById('inspector-title');
+    this.inspectorTypeEl = this.shadowRoot.getElementById('inspector-type');
+    this.inspectorBodyEl = this.shadowRoot.getElementById('inspector-body');
+    this.inspectorMetaEl = this.shadowRoot.getElementById('inspector-meta');
+    this.inspectorRelationsEl = this.shadowRoot.getElementById('inspector-relations');
     this.miniMapEl = this.shadowRoot.getElementById('minimap');
     this.miniMapCtx = this.miniMapEl?.getContext('2d');
     this.initThree();
@@ -429,6 +435,80 @@ class HermesHACloudPanel extends HTMLElement {
         .legend span { border-radius: 999px; padding: 5px 10px; font-size: 12px; border: 1px solid rgba(140,180,255,0.14); background: rgba(10, 16, 30, 0.68); }
         .legend .critical { border-color: rgba(255,107,107,0.36); color: #ffaeae; }
         .minimap-wrap { right: 18px; bottom: 18px; z-index: 4; }
+        .inspector-shell {
+          position: absolute;
+          top: 84px;
+          right: 16px;
+          width: min(360px, calc(100% - 32px));
+          max-height: calc(100% - 156px);
+          overflow: auto;
+          z-index: 6;
+          border: 1px solid rgba(148, 163, 184, 0.14);
+          border-radius: 18px;
+          background: rgba(2, 6, 23, 0.68);
+          backdrop-filter: blur(18px);
+          box-shadow: 0 18px 48px rgba(0,0,0,0.34);
+          padding: 14px;
+        }
+        .inspector-head {
+          display: grid;
+          gap: 6px;
+          padding-bottom: 12px;
+          margin-bottom: 12px;
+          border-bottom: 1px solid rgba(148,163,184,0.1);
+        }
+        .inspector-kicker {
+          text-transform: uppercase;
+          letter-spacing: 0.14em;
+          font-size: 10px;
+          color: #89aef5;
+        }
+        .inspector-title {
+          font-size: 20px;
+          font-weight: 800;
+          color: #f8fafc;
+          line-height: 1.15;
+        }
+        .inspector-body {
+          color: #d7e5ff;
+          line-height: 1.55;
+          font-size: 13px;
+        }
+        .inspector-meta, .inspector-relations {
+          display: grid;
+          gap: 8px;
+          margin-top: 12px;
+        }
+        .inspector-section-title {
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: 0.12em;
+          color: #8eaee6;
+        }
+        .inspector-pill-grid {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+        .inspector-pill {
+          padding: 7px 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(140,180,255,0.14);
+          background: rgba(14,21,42,0.84);
+          color: #eef4ff;
+          font-size: 12px;
+        }
+        .inspector-rel-btn {
+          border: 1px solid rgba(140,180,255,0.14);
+          background: rgba(14,21,42,0.84);
+          color: #eef4ff;
+          padding: 10px 12px;
+          border-radius: 14px;
+          text-align: left;
+          cursor: pointer;
+          font: inherit;
+        }
+        .inspector-rel-btn small { display: block; color: #95a8d7; margin-top: 3px; }
         canvas#minimap { width: 180px; height: 180px; display: block; border-radius: 18px; background: radial-gradient(circle at 50% 50%, rgba(21, 31, 58, 0.85), rgba(6, 10, 23, 0.96)); border: 1px solid rgba(146, 186, 255, 0.12); box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28); }
         .minimap-copy { margin-top: 8px; text-align: center; font-size: 11px; color: #90a5d6; }
         aside {
@@ -676,7 +756,8 @@ class HermesHACloudPanel extends HTMLElement {
           .sidebar-brand,
           .sidebar-tabs-desktop,
           .sidebar-footer,
-          .sidebar-section-card {
+          .sidebar-section-card,
+          .inspector-shell {
             display: none;
           }
           aside {
@@ -973,6 +1054,15 @@ class HermesHACloudPanel extends HTMLElement {
               </div>
               <div class="mobile-controls-body" id="mobile-controls-body"></div>
             </div>
+          </div>
+          <div class="inspector-shell" id="inspector-shell">
+            <div class="inspector-head">
+              <div class="inspector-kicker" id="inspector-type">Inspector</div>
+              <div class="inspector-title" id="inspector-title">Hermes HA Cloud</div>
+            </div>
+            <div class="inspector-body" id="inspector-body">Välj en nod i grafen för att se metadata, relationer och fokusvägar utan att lämna molnvyn.</div>
+            <div class="inspector-meta" id="inspector-meta"></div>
+            <div class="inspector-relations" id="inspector-relations"></div>
           </div>
           <div class="minimap-wrap" id="minimap-wrap">
             <canvas id="minimap" width="180" height="180"></canvas>
@@ -2066,7 +2156,47 @@ class HermesHACloudPanel extends HTMLElement {
       button.addEventListener('click', () => this.selectNodeById(rel.id));
       this.relationsEl.appendChild(button);
     });
+    this.updateInspectorPanel(item, related);
     this.updateFocusPaths();
+  }
+
+  updateInspectorPanel(item, related = []) {
+    if (!this.inspectorShellEl || !this.inspectorTitleEl || !this.inspectorTypeEl || !this.inspectorBodyEl || !this.inspectorMetaEl || !this.inspectorRelationsEl) return;
+    const node = item || this.selectedNode || this.hoveredNode;
+    if (!node) {
+      this.inspectorTypeEl.textContent = 'Inspector';
+      this.inspectorTitleEl.textContent = 'Hermes HA Cloud';
+      this.inspectorBodyEl.textContent = 'Välj en nod i grafen för att se metadata, relationer och fokusvägar utan att lämna molnvyn.';
+      this.inspectorMetaEl.innerHTML = '';
+      this.inspectorRelationsEl.innerHTML = '';
+      return;
+    }
+    const chips = [];
+    if (node.layer && node.layer !== 'core') chips.push(node.layer);
+    if (node.group) chips.push(node.group);
+    if (node.category) chips.push(node.category);
+    if (node.state) chips.push(`state ${node.state}`);
+    if (node.meta) chips.push(node.meta);
+    this.inspectorTypeEl.textContent = String(node.layer || node.type || 'core').toUpperCase();
+    this.inspectorTitleEl.textContent = node.title || 'Untitled node';
+    this.inspectorBodyEl.textContent = node.text || 'Ingen extra beskrivning tillgänglig för vald nod ännu.';
+    this.inspectorMetaEl.innerHTML = `
+      <div class="inspector-section-title">Metadata</div>
+      <div class="inspector-pill-grid">${chips.length ? chips.map((chip) => `<span class="inspector-pill">${this.escapeHtml(chip)}</span>`).join('') : '<span class="inspector-pill">Ingen metadata</span>'}</div>
+    `;
+    const topRelated = related.slice(0, 4);
+    this.inspectorRelationsEl.innerHTML = `<div class="inspector-section-title">Strongest connections</div>`;
+    if (!topRelated.length) {
+      this.inspectorRelationsEl.innerHTML += '<div class="empty">Inga tydliga kopplingar för vald nod ännu.</div>';
+      return;
+    }
+    topRelated.forEach((rel) => {
+      const button = document.createElement('button');
+      button.className = 'inspector-rel-btn';
+      button.innerHTML = `<strong>${this.escapeHtml(rel.title)}</strong><small>${this.escapeHtml(rel.relation)} · ${this.escapeHtml(rel.meta || rel.group || rel.layer || '')}</small>`;
+      button.addEventListener('click', () => this.selectNodeById(rel.id));
+      this.inspectorRelationsEl.appendChild(button);
+    });
   }
 
   updateLabelAnchors() {
