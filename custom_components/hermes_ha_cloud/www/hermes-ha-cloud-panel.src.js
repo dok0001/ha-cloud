@@ -116,7 +116,10 @@ class HermesHACloudPanel extends HTMLElement {
         .layout {
           display: grid;
           grid-template-columns: minmax(0, 1.78fr) minmax(360px, 0.92fr);
+          min-height: 100vh;
+          min-height: 100dvh;
           height: 100vh;
+          height: 100dvh;
           background:
             radial-gradient(circle at 18% 14%, rgba(58, 126, 255, 0.16), transparent 26%),
             radial-gradient(circle at 74% 20%, rgba(150, 88, 255, 0.14), transparent 24%),
@@ -204,6 +207,129 @@ class HermesHACloudPanel extends HTMLElement {
         @media (max-width: 980px) {
           .layout { grid-template-columns: 1fr; grid-template-rows: minmax(56vh, 60vh) auto; }
           .scene-wrap { border-right: 0; border-bottom: 1px solid var(--border); }
+        }
+        @media (max-width: 720px) {
+          .layout { min-height: 100dvh; height: auto; grid-template-rows: auto auto; }
+          .scene-wrap {
+            border-right: 0;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            min-height: 0;
+            overflow: clip;
+          }
+          .hud {
+            position: relative;
+            inset: auto;
+            width: auto;
+            margin: 10px;
+          }
+          .headline {
+            padding: 14px;
+            border-radius: 16px;
+          }
+          .eyebrow {
+            font-size: 10px;
+            letter-spacing: 0.14em;
+          }
+          h1 {
+            font-size: 22px;
+          }
+          .sub {
+            font-size: 13px;
+            line-height: 1.45;
+            max-width: none;
+          }
+          .controls {
+            grid-template-columns: 1fr;
+            gap: 10px;
+          }
+          .search input {
+            padding: 10px 12px;
+            font-size: 16px;
+          }
+          .control-group,
+          .filters,
+          .legend {
+            display: flex;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            padding-bottom: 4px;
+          }
+          .control-group::-webkit-scrollbar,
+          .filters::-webkit-scrollbar,
+          .legend::-webkit-scrollbar {
+            display: none;
+          }
+          .control-pills button,
+          .filters button,
+          .row,
+          .focus-row,
+          .relation-btn,
+          .path-node {
+            flex: 0 0 auto;
+          }
+          .legend {
+            margin-top: 10px;
+          }
+          .minimap-wrap {
+            position: relative;
+            right: auto;
+            bottom: auto;
+            transform: none;
+            margin: 0 auto 12px;
+            z-index: 4;
+          }
+          canvas#minimap {
+            width: 148px;
+            height: 148px;
+          }
+          .minimap-copy {
+            font-size: 10px;
+          }
+          aside {
+            padding: 10px;
+            gap: 10px;
+          }
+          .card {
+            padding: 12px;
+            border-radius: 14px;
+          }
+          .stats {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+          }
+          .stat {
+            padding: 10px;
+          }
+          .stat .v {
+            font-size: 20px;
+          }
+          .path-row {
+            padding: 8px;
+          }
+        }
+        @media (max-width: 480px) {
+          .hud { margin: 8px; }
+          .headline { padding: 12px; }
+          h1 { font-size: 20px; }
+          .sub { font-size: 12px; }
+          .control-pills button,
+          .filters button {
+            padding: 8px 10px;
+            font-size: 13px;
+          }
+          canvas#minimap {
+            width: 132px;
+            height: 132px;
+          }
+          .stats {
+            grid-template-columns: 1fr 1fr;
+          }
         }
       </style>
       <div class="layout">
