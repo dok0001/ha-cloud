@@ -687,6 +687,15 @@ class HermesHACloudPanel extends HTMLElement {
         @media (max-width: 980px) and (orientation: landscape) {
           .layout { min-height: 100dvh; height: 100dvh; grid-template-columns: minmax(0, 1fr) minmax(300px, 38vw); grid-template-rows: 1fr; }
           .layout[data-mobile-tab="cloud"] { grid-template-columns: 1fr; }
+          .layout[data-mobile-tab="cloud"] aside { display: none; }
+          .layout[data-mobile-tab="snapshot"],
+          .layout[data-mobile-tab="relations"],
+          .layout[data-mobile-tab="focus"],
+          .layout[data-mobile-tab="problem"] { grid-template-columns: 1fr; }
+          .layout[data-mobile-tab="snapshot"] .scene-wrap,
+          .layout[data-mobile-tab="relations"] .scene-wrap,
+          .layout[data-mobile-tab="focus"] .scene-wrap,
+          .layout[data-mobile-tab="problem"] .scene-wrap { display: none; }
           .scene-wrap { min-height: 100dvh; border-bottom: 0; border-right: 1px solid var(--border); }
           .hud { position: absolute; inset: 8px auto auto 8px; width: min(420px, calc(100% - 16px)); margin: 0; }
           .headline { padding: 9px 10px; border-radius: 14px; }
@@ -706,6 +715,16 @@ class HermesHACloudPanel extends HTMLElement {
         }
         @media (max-width: 720px) {
           .layout { min-height: 100dvh; height: auto; grid-template-rows: minmax(74dvh, 84dvh) auto; }
+          .layout[data-mobile-tab="cloud"] { grid-template-rows: 1fr; }
+          .layout[data-mobile-tab="cloud"] aside { display: none; }
+          .layout[data-mobile-tab="snapshot"],
+          .layout[data-mobile-tab="relations"],
+          .layout[data-mobile-tab="focus"],
+          .layout[data-mobile-tab="problem"] { grid-template-rows: auto; }
+          .layout[data-mobile-tab="snapshot"] .scene-wrap,
+          .layout[data-mobile-tab="relations"] .scene-wrap,
+          .layout[data-mobile-tab="focus"] .scene-wrap,
+          .layout[data-mobile-tab="problem"] .scene-wrap { display: none; }
           .scene-wrap {
             border-right: 0;
             border-bottom: 1px solid var(--border);
