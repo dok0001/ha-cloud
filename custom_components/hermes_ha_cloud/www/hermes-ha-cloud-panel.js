@@ -92,6 +92,7 @@ class HermesHACloudPanel extends HTMLElement {
     this.drawerCloseEl = this.shadowRoot.getElementById('drawer-close');
     this.drawerOverlayEl = this.shadowRoot.getElementById('drawer-overlay');
     this.drawerShellEl = this.shadowRoot.getElementById('controls-drawer');
+    this.layoutEl = this.shadowRoot.querySelector('.layout');
     this.panelAsideEl = this.shadowRoot.querySelector('aside');
     this.inspectorShellEl = this.shadowRoot.getElementById('inspector-shell');
     this.inspectorTitleEl = this.shadowRoot.getElementById('inspector-title');
@@ -683,8 +684,28 @@ class HermesHACloudPanel extends HTMLElement {
           .layout { grid-template-columns: 1fr; grid-template-rows: minmax(62vh, 68vh) auto; }
           .scene-wrap { border-right: 0; border-bottom: 1px solid var(--border); }
         }
+        @media (max-width: 980px) and (orientation: landscape) {
+          .layout { min-height: 100dvh; height: 100dvh; grid-template-columns: minmax(0, 1fr) minmax(300px, 38vw); grid-template-rows: 1fr; }
+          .layout[data-mobile-tab="cloud"] { grid-template-columns: 1fr; }
+          .scene-wrap { min-height: 100dvh; border-bottom: 0; border-right: 1px solid var(--border); }
+          .hud { position: absolute; inset: 8px auto auto 8px; width: min(420px, calc(100% - 16px)); margin: 0; }
+          .headline { padding: 9px 10px; border-radius: 14px; }
+          .sub { display: none; }
+          .controls-drawer { top: 8px; bottom: 8px; right: 8px; left: auto; width: min(360px, 42vw); height: auto; border-radius: 18px; }
+          .drawer-toggle { width: auto; }
+          .mobile-toolbar, .mobile-tabs, .mobile-cloud-actions, .mobile-bottom-nav { display: flex; }
+          .mobile-bottom-nav { left: 10px; right: 10px; bottom: calc(env(safe-area-inset-bottom, 0px) + 6px); }
+          .minimap-wrap { right: 10px; bottom: 64px; transform: scale(0.72); transform-origin: bottom right; }
+          aside { overflow-y: auto; }
+          aside[data-mobile-tab="cloud"] { display: none; }
+          aside .card[data-panel] { display: none; }
+          aside[data-mobile-tab="snapshot"] .card[data-panel="snapshot"],
+          aside[data-mobile-tab="relations"] .card[data-panel="relations"],
+          aside[data-mobile-tab="focus"] .card[data-panel="focus"],
+          aside[data-mobile-tab="problem"] .card[data-panel="problem"] { display: block; }
+        }
         @media (max-width: 720px) {
-          .layout { min-height: 100dvh; height: auto; grid-template-rows: minmax(72dvh, 82dvh) auto; }
+          .layout { min-height: 100dvh; height: auto; grid-template-rows: minmax(74dvh, 84dvh) auto; }
           .scene-wrap {
             border-right: 0;
             border-bottom: 1px solid var(--border);
@@ -845,8 +866,8 @@ class HermesHACloudPanel extends HTMLElement {
             transition: opacity 180ms ease, transform 180ms ease;
           }
           .scene-wrap[data-mobile-mode="cloud"] .headline {
-            padding: 8px 10px;
-            background: linear-gradient(180deg, rgba(9,14,31,0.58), rgba(9,14,31,0.14));
+            padding: 7px 9px;
+            background: linear-gradient(180deg, rgba(9,14,31,0.52), rgba(9,14,31,0.10));
             transition: opacity 180ms ease, transform 180ms ease;
           }
           .scene-wrap[data-mobile-mode="cloud"] .sub,
@@ -2043,7 +2064,8 @@ class HermesHACloudPanel extends HTMLElement {
   }
 
   isMobileLayout() {
-    return (this.width || window.innerWidth || 0) <= 720;
+    const width = this.width || window.innerWidth || 0;
+    return width <= 720 || (width <= 980 && window.matchMedia('(orientation: landscape)').matches);
   }
 
   updateDrawerUI() {
@@ -2088,6 +2110,10 @@ class HermesHACloudPanel extends HTMLElement {
     if (aside) {
       if (mobile) aside.setAttribute('data-mobile-tab', this.mobileTab);
       else aside.removeAttribute('data-mobile-tab');
+    }
+    if (this.layoutEl) {
+      if (mobile) this.layoutEl.setAttribute('data-mobile-tab', this.mobileTab);
+      else this.layoutEl.removeAttribute('data-mobile-tab');
     }
     tabs?.querySelectorAll('button[data-tab]').forEach((button) => button.classList.toggle('active', mobile && button.dataset.tab === this.mobileTab));
     this.mobileBottomNavEl?.querySelectorAll('button[data-bottom-tab]').forEach((button) => {
