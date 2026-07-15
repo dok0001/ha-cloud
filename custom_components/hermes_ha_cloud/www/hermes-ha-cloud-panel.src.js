@@ -732,16 +732,18 @@ class HermesHACloudPanel extends HTMLElement {
           .mobile-toolbar::-webkit-scrollbar,
           .mobile-tabs::-webkit-scrollbar { display: none; }
           .controls-drawer {
-            top: 10px;
-            left: 10px;
-            right: 10px;
-            bottom: 10px;
+            top: auto;
+            left: 8px;
+            right: 8px;
+            bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
             width: auto;
             max-width: none;
-            border-radius: 18px;
+            height: min(62dvh, 560px);
+            min-height: 0;
+            border-radius: 20px 20px 16px 16px;
           }
           .drawer-body {
-            padding: 12px 12px 16px;
+            padding: 10px 10px 14px;
           }
           .eyebrow {
             font-size: 10px;
@@ -851,8 +853,17 @@ class HermesHACloudPanel extends HTMLElement {
           .scene-wrap[data-mobile-mode="cloud"] .drawer-launch .drawer-hint {
             display: none;
           }
+          .scene-wrap[data-mobile-mode="cloud"] .drawer-launch {
+            margin-top: 6px;
+          }
+          .scene-wrap[data-mobile-mode="cloud"] .drawer-toggle {
+            min-height: 34px;
+            padding: 8px 10px;
+            font-size: 12px;
+          }
           .scene-wrap[data-mobile-mode="cloud"] .mobile-toolbar {
-            margin-top: 8px;
+            margin-top: 6px;
+            gap: 6px;
             transition: opacity 180ms ease, transform 180ms ease;
           }
           .scene-wrap[data-mobile-mode="cloud"][data-mobile-chrome="hidden"] .hud,
@@ -900,18 +911,27 @@ class HermesHACloudPanel extends HTMLElement {
           }
         }
         @media (max-width: 480px) {
-          .hud { inset: 8px auto auto 8px; width: calc(100% - 16px); margin: 0; }
-          .headline { padding: 12px; }
-          h1 { font-size: 20px; }
-          .sub { font-size: 12px; }
+          .hud { inset: 6px auto auto 6px; width: calc(100% - 12px); margin: 0; }
+          .headline { padding: 9px 10px; border-radius: 12px; }
+          h1 { font-size: 18px; }
+          .sub { font-size: 11px; }
+          .mobile-toolbar button,
+          .mobile-bottom-nav button,
           .control-pills button,
           .filters button {
-            padding: 8px 10px;
-            font-size: 13px;
+            padding: 7px 9px;
+            font-size: 12px;
+            min-height: 34px;
+          }
+          .controls-drawer {
+            left: 6px;
+            right: 6px;
+            bottom: calc(env(safe-area-inset-bottom, 0px) + 6px);
+            height: min(58dvh, 500px);
           }
           canvas#minimap {
-            width: 132px;
-            height: 132px;
+            width: 116px;
+            height: 116px;
           }
           .stats {
             grid-template-columns: 1fr 1fr;
