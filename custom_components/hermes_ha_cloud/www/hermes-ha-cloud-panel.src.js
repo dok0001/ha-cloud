@@ -1043,12 +1043,16 @@ class HermesHACloudPanel extends HTMLElement {
           </div>
           <div class="controls-drawer${this.drawerOpen ? ' open' : ''}" id="controls-drawer">
             <div class="drawer-head">
-              <span><strong>🧭 Kontrollpanel</strong><small>App-lik drawer för vyer, profiler och effekter</small></span>
+              <span><strong>🧭 Kontrollpanel</strong><small>Vyer, renderer, profiler och effekter</small></span>
               <button class="drawer-close" id="drawer-close" type="button">Stäng</button>
             </div>
             <div class="drawer-body">
               <div class="controls">
                 <label class="search"><input id="search" type="search" placeholder="Sök rum, enheter, integrationer, automations, personer..." /></label>
+                <div class="control-section">
+                  <div class="control-section-title">Renderer</div>
+                  <div class="control-group control-pills" id="renderermodes"></div>
+                </div>
                 <div class="control-group control-pills" id="viewmodes"></div>
                 <div class="control-group control-pills" id="labelmodes"></div>
                 <div class="control-group control-pills" id="motionmodes"></div>
@@ -1063,10 +1067,6 @@ class HermesHACloudPanel extends HTMLElement {
                 </button>
                 <div class="settings-body" id="settings-body">
                   <div class="control-stack controls-extended">
-                    <div class="control-section">
-                      <div class="control-section-title">Renderer</div>
-                      <div class="control-group control-pills" id="renderermodes"></div>
-                    </div>
                     <div class="control-section">
                       <div class="control-section-title">Profil</div>
                       <div class="control-group control-pills" id="presetprofiles"></div>
